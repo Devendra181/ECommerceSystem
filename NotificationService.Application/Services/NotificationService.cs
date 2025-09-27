@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using NotificationService.Application.DTOs;
 using NotificationService.Application.Interfaces;
+using NotificationService.Contracts.Interfaces;
 using NotificationService.Domain.Entities;
 using NotificationService.Domain.Enums;
 using NotificationService.Domain.Repositories;
@@ -8,7 +9,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace NotificationService.Application.Services
 {
-    public class NotificationService : INotificationService
+    public class NotificationService : INotificationService, INotificationProcessor
     {
         private readonly INotificationRepository _notifications;
         private readonly IUserPreferenceRepository _preferences;

@@ -1,8 +1,13 @@
+using Messaging.Common.Extensions;
+using Messaging.Common.Options;
 using Microsoft.EntityFrameworkCore;
 using ProductService.Application.Interfaces;
 using ProductService.Application.Mappings;
+using ProductService.Application.Messaging;
 using ProductService.Application.Services;
+using ProductService.Contracts.Messaging;
 using ProductService.Domain.Repositories;
+using ProductService.Infrastructure.Messaging;
 using ProductService.Infrastructure.Persistence;
 using ProductService.Infrastructure.Repositories;
 using System.Text.Json.Serialization;
@@ -49,6 +54,15 @@ namespace ProductService.API
 
             // Add AutoMapper
             builder.Services.AddAutoMapper(typeof(MappingProfile));
+
+            //RabbitMQ
+            builder.Services.Configure<RabbitMqOptions>(builder.Configuration.GetSection("RabbitMq"));
+            var mq = builder.Configuration.GetSection("RabbitMq").Get<RabbitMqOptions>()!;
+
+            builder.Services.AddRabbitMq(mq.HostName, mq.UserName, mq.Password, mq.VirtualHost);
+            builder.Services.AddScoped<IOrderPlacedHandler, OrderPlacedHandler>();
+            builder.Services.AddHostedService<OrderPlacedConsumer>();
+
 
             var app = builder.Build();
 

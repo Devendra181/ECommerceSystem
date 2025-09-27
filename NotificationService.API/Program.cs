@@ -1,9 +1,16 @@
+using Messaging.Common.Extensions;
+using Messaging.Common.Options;
 using Microsoft.EntityFrameworkCore;
 using NotificationService.Application.Handlers;
 using NotificationService.Application.Interfaces;
+using NotificationService.Application.Messaging;
 using NotificationService.Application.Services;
 using NotificationService.Application.Utilities;
+using NotificationService.Contracts.Interfaces;
+using NotificationService.Contracts.Messaging;
 using NotificationService.Domain.Repositories;
+using NotificationService.Infrastructure.BackgroundJobs;
+using NotificationService.Infrastructure.Messaging.Consumers;
 using NotificationService.Infrastructure.Persistence;
 using NotificationService.Infrastructure.Repositories;
 using System.Text.Json.Serialization;
@@ -47,6 +54,26 @@ namespace NotificationService.API
             builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
             builder.Services.AddScoped<INotificationTemplateRepository, NotificationTemplateRepository>();
             builder.Services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
+
+            //RabbitMQ
+            // Bind RabbitMQ config
+            builder.Services.Configure<RabbitMqOptions>(builder.Configuration.GetSection("RabbitMq"));
+            var mq = builder.Configuration.GetSection("RabbitMq").Get<RabbitMqOptions>()!;
+
+            // Register RabbitMQ channel (you likely already have AddRabbitMq in Messaging.Common)
+            builder.Services.AddRabbitMq(mq.HostName, mq.UserName, mq.Password, mq.VirtualHost);
+
+            // Register handler
+            builder.Services.AddScoped<IOrderPlacedHandler, OrderPlacedHandler>();
+
+            // Register consumer
+            builder.Services.AddHostedService<OrderPlacedConsumer>();
+
+            // Register Application service
+            builder.Services.AddScoped<INotificationProcessor, NotificationService.Application.Services.NotificationService>();
+
+            // Register Background Worker
+            builder.Services.AddHostedService<NotificationWorker>();
 
             var app = builder.Build();
 

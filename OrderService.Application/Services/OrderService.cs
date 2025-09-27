@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Messaging.Common.Events;
 using Microsoft.Extensions.Configuration;
 using OrderService.Application.DTOs.Common;
 using OrderService.Application.DTOs.Order;
@@ -59,8 +60,8 @@ namespace OrderService.Application.Services
                 throw new ArgumentException("Order must have at least one item.");
 
             // Validate that the user exists via User Microservice
-            var userExists = await _userServiceClient.UserExistsAsync(request.UserId, accessToken);
-            if (!userExists)
+            var user = await _userServiceClient.GetUserByIdAsync(request.UserId, accessToken);
+            if (user == null)
                 throw new InvalidOperationException("User does not exist.");
 
             // Resolve Shipping Address ID, either provided or created newly via User Microservice
@@ -144,7 +145,7 @@ namespace OrderService.Application.Services
                     OrderStatusId = (int)initialStatus,
                     CreatedAt = now,
                     OrderDate = now,
-                    CancellationPolicyId = cancellationPolicyId,  
+                    CancellationPolicyId = cancellationPolicyId,
                     ReturnPolicyId = returnPolicyId,
                     OrderItems = new List<OrderItem>()
                 };
@@ -193,18 +194,34 @@ namespace OrderService.Application.Services
                 // For COD, immediately reserve stock and send notification
                 if (request.PaymentMethod == PaymentMethodEnum.COD)
                 {
-                    var stockUpdates = request.Items.Select(i => new UpdateStockRequestDTO
+                    #region Event Publishing to RabbitMQ
+
+                    // Construct the integration event (OrderPlacedEvent)
+                    var orderPlacedEvent = new OrderPlacedEvent
                     {
-                        ProductId = i.ProductId,
-                        Quantity = i.Quantity
-                    }).ToList();
+                        OrderId = order.Id,
+                        OrderNumber = order.OrderNumber,
+                        UserId = order.UserId,
+                        CustomerName = user.FullName,
+                        CustomerEmail = user.Email,
+                        PhoneNumber = user.PhoneNumber,
+                        TotalAmount = order.TotalAmount,
+                        Items = order.OrderItems.Select(i => new OrderItemLine
+                        {
+                            ProductId = i.ProductId,
+                            Quantity = i.Quantity,
+                            UnitPrice = i.PriceAtPurchase
+                        }).ToList()
+                    };
 
-                    var stockUpdated = await _productServiceClient.DecreaseStockBulkAsync(stockUpdates, accessToken);
-                    if (!stockUpdated)
-                        throw new InvalidOperationException("Failed to reserve product stock for COD order.");
+                    // Publish the event to RabbitMQ using the shared publisher.
+                    // This message will be routed to:
+                    //    - ProductService (to decrease stock)
+                    //    - NotificationService (to insert notification record).
+                    // correlationId is set for traceability across logs and microservices.
+                    await _publisher.PublishOrderPlacedAsync(orderPlacedEvent, Guid.NewGuid().ToString());
 
-                    // Fire and Forget notification
-                    _ = _notificationServiceClient.SendOrderPlacedNotificationAsync(order.UserId, order.Id, accessToken);
+                    #endregion
 
                     // Map and return order DTO with confirmed status and no payment URL
                     var orderDto = _mapper.Map<OrderResponseDTO>(order);
@@ -253,6 +270,10 @@ namespace OrderService.Application.Services
             if (paymentInfo.PaymentStatus != PaymentStatusEnum.Completed)
                 throw new InvalidOperationException("Payment is not successful.");
 
+            var user = await _userServiceClient.GetUserByIdAsync(order.UserId, accessToken);
+            if (user == null)
+                throw new InvalidOperationException("User does not exist.");
+
             try
             {
                 // Change order status to Confirmed
@@ -262,29 +283,43 @@ namespace OrderService.Application.Services
                 if (!statusChanged)
                     throw new InvalidOperationException("Failed to update order status.");
 
-                // Reduce stock for ordered products
-                var stockUpdates = order.OrderItems.Select(i => new UpdateStockRequestDTO
+                // Now that the order is confirmed, publish an integration event
+
+                // Create the event payload that downstream services need
+                var orderPlacedEvent = new OrderPlacedEvent
                 {
-                    ProductId = i.ProductId,
-                    Quantity = i.Quantity
-                }).ToList();
+                    OrderId = order.Id,
+                    UserId = order.UserId,
+                    CustomerName = user.FullName,
+                    CustomerEmail = user.Email,
+                    PhoneNumber = user.PhoneNumber,
+                    TotalAmount = order.TotalAmount,
+                    Items = order.OrderItems.Select(i => new OrderItemLine
+                    {
+                        ProductId = i.ProductId,
+                        Quantity = i.Quantity,
+                        UnitPrice = i.PriceAtPurchase
+                    }).ToList()
+                };
 
-                bool stockReduced = await _productServiceClient.DecreaseStockBulkAsync(stockUpdates, accessToken);
-                if (!stockReduced)
-                    throw new InvalidOperationException("Failed to reduce stock after payment.");
-
-                // Notify user asynchronously about successful order placement
-                _ = _notificationServiceClient.SendOrderPlacedNotificationAsync(order.UserId, order.Id, accessToken);
+                // Publish the event to RabbitMQ
+                // - _publisher abstracts RabbitMQ communication
+                // - The message is sent to exchange "ecommerce.topic" with routing key "order.placed"
+                // - ProductService will consume this event to reduce stock
+                // - NotificationService will consume this event to insert a notification
+                // - correlationId (Guid.NewGuid().ToString()) helps trace this message across logs and services
+                await _publisher.PublishOrderPlacedAsync(orderPlacedEvent, Guid.NewGuid().ToString());
 
                 return true;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 //Log the Exception
                 Console.WriteLine(ex.Message);
                 throw;
             }
         }
+
 
         // Change order status with full validation, transaction support, and history tracking.
         // Returns detailed response DTO with success or error info.

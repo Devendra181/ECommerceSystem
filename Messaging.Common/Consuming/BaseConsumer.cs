@@ -2,11 +2,18 @@
 using RabbitMQ.Client.Events;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Messaging.Common.Consuming
 {
+    // Reusable consumer base (HostedService).
+    // - Subscribes to a queue
+    // - Deserializes messages into <T>
+    // - Calls HandleMessage(T, correlationId)
+    // - ACKs on success, NACKs on failed
     // T: The type of message being consumed (DTO/Event).
-    public abstract class BaseConsumer<T>
+    public abstract class BaseConsumer<T> : BackgroundService
     {
         // The RabbitMQ channel (IModel) this consumer will use.
         private readonly IModel _channel;
@@ -14,15 +21,18 @@ namespace Messaging.Common.Consuming
         // The name of the queue this consumer listens to.
         private readonly string _queue;
 
+        private readonly ILogger _logger;
+
         // Constructor: accepts the channel and queue name as inputs.
-        protected BaseConsumer(IModel channel, string queue)
+        protected BaseConsumer(IModel channel, string queueName, ILogger logger)
         {
             _channel = channel;
-            _queue = queue;
+            _queue = queueName;
+            _logger = logger;
         }
 
         // Starts consuming messages from the configured queue.
-        public void Start()
+        protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
             // Create an async consumer for this channel.
             var consumer = new AsyncEventingBasicConsumer(_channel);
@@ -46,13 +56,16 @@ namespace Messaging.Common.Consuming
                 try
                 {
                     // Convert the message body (byte array) into a UTF-8 string.
-                    var body = Encoding.UTF8.GetString(ea.Body.ToArray());
+                    var body = Encoding.UTF8.GetString(ea.Body.Span);
 
                     // Deserialize the JSON string into the expected type T.
-                    var message = JsonSerializer.Deserialize<T>(body);
+                    var msg = JsonSerializer.Deserialize<T>(body)!;
+
+                    // CorrelationId is useful for tracing across services
+                    var correlationId = ea.BasicProperties?.CorrelationId ?? string.Empty;
 
                     // Call the abstract handler method for actual business logic.
-                    await HandleMessage(message!, ea.BasicProperties.CorrelationId);
+                    await HandleMessage(msg!, correlationId);
 
                     // If no exception occurs → acknowledge the message (mark as processed).
                     _channel.BasicAck(ea.DeliveryTag, multiple: false);
@@ -65,10 +78,9 @@ namespace Messaging.Common.Consuming
                 catch (Exception ex)
                 {
                     // If something goes wrong → log the error.
-                    Console.WriteLine($"[Error] Failed to process message: {ex.Message}");
-
+                    _logger.LogError($"Message: {ex.Message}: Complete Message: {ex.ToString()}");
                     // Negative Acknowledgement → message goes to DLQ (if DLX is configured).
-                    _channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+                    _channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: true);
 
                     // NACK = "Negative Acknowledgement".
                     // Tells RabbitMQ: I could not process this message.
@@ -77,15 +89,21 @@ namespace Messaging.Common.Consuming
                 }
             };
 
+            // Prefetch=1 to process messages sequentially per consumer instance
+            _channel.BasicQos(0, 1, global: false);
+
             // Begin consuming messages from the queue.
             // Start delivering messages from this queue to my consumer,
             // and I will manually confirm (ACK/NACK) each one.
             _channel.BasicConsume(queue: _queue, autoAck: false, consumer: consumer);
+
+            _logger.LogInformation("Started consumer for queue: {Queue}", _queue);
+            return Task.CompletedTask;
         }
 
+        // Implement business logic here.
         // Abstract method for handling a message.
         // Must be implemented in derived consumers (e.g., PaymentConsumer, InventoryConsumer).
         protected abstract Task HandleMessage(T message, string correlationId);
     }
 }
-

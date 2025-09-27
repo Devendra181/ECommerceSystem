@@ -1,9 +1,9 @@
 ﻿using Messaging.Common.Models;
 namespace Messaging.Common.Events
 {
-    //Raised by Order Microservice when a new order is placed
-    //Consumed by Orchestrator Microservice, then Orchestrator service Raise StockReservationRequestedEvent
-    public sealed class OrderPlacedEvent : EventBase
+    //Raised by Orchestrator Service when Stock Reservation Successed
+    //Consumed by Order and Notification Microservice
+    public sealed class OrderConfirmedEvent : EventBase
     {
         public Guid OrderId { get; set; }
         public Guid UserId { get; set; }

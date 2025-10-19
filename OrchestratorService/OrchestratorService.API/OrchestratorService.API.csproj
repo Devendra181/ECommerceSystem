@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Messaging.Common\Messaging.Common.csproj" />
+    <ProjectReference Include="..\OrchestratorService.Application\OrchestratorService.Application.csproj" />
+    <ProjectReference Include="..\OrchestratorService.Contracts\OrchestratorService.Contracts.csproj" />
+    <ProjectReference Include="..\OrchestratorService.Infrastructure\OrchestratorService.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

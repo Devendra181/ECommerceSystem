@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Messaging.Common.Events;
+using Messaging.Common.Models;
 using Microsoft.Extensions.Configuration;
 using OrderService.Application.DTOs.Common;
 using OrderService.Application.DTOs.Order;
@@ -24,8 +25,7 @@ namespace OrderService.Application.Services
         private readonly IMapper _mapper;
         private readonly IMasterDataRepository _masterDataRepository;
         private readonly IConfiguration _configuration;
-        private readonly IOrderEventPublisher _publisher;
-
+        private readonly IOrderPlacedEventPublisher _publisher;
         public OrderService(
             IOrderRepository orderRepository,
             IUserServiceClient userServiceClient,
@@ -35,7 +35,7 @@ namespace OrderService.Application.Services
             IMasterDataRepository masterDataRepository,
             IMapper mapper,
             IConfiguration configuration,
-            IOrderEventPublisher publisher)
+            IOrderPlacedEventPublisher publisher)
         {
             // Initialize dependencies with null checks for safe injection
             _orderRepository = orderRepository ?? throw new ArgumentNullException(nameof(orderRepository));
@@ -48,6 +48,7 @@ namespace OrderService.Application.Services
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _publisher = publisher;
         }
+
 
         // Create a new order including user validation, address handling, stock check,
         // pricing calculations, payment initiation, and transactional consistency.
@@ -111,7 +112,6 @@ namespace OrderService.Application.Services
 
             try
             {
-
                 // Fetch policies (example placeholders, adjust with your actual logic)
                 int? cancellationPolicyId = null;
                 int? returnPolicyId = null;
@@ -206,7 +206,8 @@ namespace OrderService.Application.Services
                         CustomerEmail = user.Email,
                         PhoneNumber = user.PhoneNumber,
                         TotalAmount = order.TotalAmount,
-                        Items = order.OrderItems.Select(i => new OrderItemLine
+                        CorrelationId = order.Id.ToString(),
+                        Items = order.OrderItems.Select(i => new OrderLineItem
                         {
                             ProductId = i.ProductId,
                             Quantity = i.Quantity,
@@ -218,8 +219,8 @@ namespace OrderService.Application.Services
                     // This message will be routed to:
                     //    - ProductService (to decrease stock)
                     //    - NotificationService (to insert notification record).
-                    // correlationId is set for traceability across logs and microservices.
-                    await _publisher.PublishOrderPlacedAsync(orderPlacedEvent, Guid.NewGuid().ToString());
+                    //    - Use OrderId as CorrelationId for traceability
+                    await _publisher.PublishOrderPlacedAsync(orderPlacedEvent);
 
                     #endregion
 
@@ -247,6 +248,7 @@ namespace OrderService.Application.Services
                 throw;
             }
         }
+
 
         // Confirms an order after successful payment: updates status, reduces stock, sends notifications.
         public async Task<bool> ConfirmOrderAsync(Guid orderId, string accessToken)
@@ -283,7 +285,7 @@ namespace OrderService.Application.Services
                 if (!statusChanged)
                     throw new InvalidOperationException("Failed to update order status.");
 
-                // Now that the order is confirmed, publish an integration event
+                // Now that the order is confirmed, publish Order Placed event
 
                 // Create the event payload that downstream services need
                 var orderPlacedEvent = new OrderPlacedEvent
@@ -294,7 +296,8 @@ namespace OrderService.Application.Services
                     CustomerEmail = user.Email,
                     PhoneNumber = user.PhoneNumber,
                     TotalAmount = order.TotalAmount,
-                    Items = order.OrderItems.Select(i => new OrderItemLine
+                    CorrelationId = order.Id.ToString(),
+                    Items = order.OrderItems.Select(i => new OrderLineItem
                     {
                         ProductId = i.ProductId,
                         Quantity = i.Quantity,
@@ -307,8 +310,7 @@ namespace OrderService.Application.Services
                 // - The message is sent to exchange "ecommerce.topic" with routing key "order.placed"
                 // - ProductService will consume this event to reduce stock
                 // - NotificationService will consume this event to insert a notification
-                // - correlationId (Guid.NewGuid().ToString()) helps trace this message across logs and services
-                await _publisher.PublishOrderPlacedAsync(orderPlacedEvent, Guid.NewGuid().ToString());
+                await _publisher.PublishOrderPlacedAsync(orderPlacedEvent);
 
                 return true;
             }
@@ -319,6 +321,7 @@ namespace OrderService.Application.Services
                 throw;
             }
         }
+
 
 
         // Change order status with full validation, transaction support, and history tracking.

@@ -85,6 +85,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrchestratorService.Infrast
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrchestratorService.API", "OrchestratorService\OrchestratorService.API\OrchestratorService.API.csproj", "{249B2306-3A1D-4FF4-B5A5-6CB2BBBA8EDD}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Gateway", "Gateway", "{25AD1A1E-EBD6-4E3C-9354-FC38758D9456}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "APIGateway", "APIGateway\APIGateway.csproj", "{E5C0E854-0C40-4BE5-B498-ED038E370CD3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -227,6 +231,10 @@ Global
 		{249B2306-3A1D-4FF4-B5A5-6CB2BBBA8EDD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{249B2306-3A1D-4FF4-B5A5-6CB2BBBA8EDD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{249B2306-3A1D-4FF4-B5A5-6CB2BBBA8EDD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E5C0E854-0C40-4BE5-B498-ED038E370CD3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5C0E854-0C40-4BE5-B498-ED038E370CD3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5C0E854-0C40-4BE5-B498-ED038E370CD3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5C0E854-0C40-4BE5-B498-ED038E370CD3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -266,6 +274,7 @@ Global
 		{18A3F578-5517-4E82-BAD3-6964D25F4988} = {3FCD9545-80BF-4791-9727-6C069C18140A}
 		{1CA39F95-0B37-4994-80CA-E3CD7401EEAD} = {3FCD9545-80BF-4791-9727-6C069C18140A}
 		{249B2306-3A1D-4FF4-B5A5-6CB2BBBA8EDD} = {3FCD9545-80BF-4791-9727-6C069C18140A}
+		{E5C0E854-0C40-4BE5-B498-ED038E370CD3} = {25AD1A1E-EBD6-4E3C-9354-FC38758D9456}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {5BAF351F-C7DC-46E8-9571-D43D9ED46B91}

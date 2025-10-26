@@ -1,0 +1,134 @@
+{
+  // Global configuration: Defines base settings for the entire Ocelot Gateway.
+  "GlobalConfiguration": {
+    // The external base URL of your API Gateway.
+    // This is the single public entry point that external clients will use.
+    // All requests from frontend or external APIs should go through this URL.
+    // the Gateway will route it to the corresponding downstream microservice internally.
+    "BaseUrl": "https://localhost:7047"
+  },
+
+  // Routes: Each entry defines how an incoming client request (Upstream)
+  // should be forwarded to the correct backend microservice (Downstream).
+  "Routes": [
+
+    // ==========================================================
+    // USER SERVICE ROUTE
+    // ==========================================================
+    {
+      // The incoming URL pattern that clients use to access user-related APIs.
+      // Example: GET https://localhost:7047/users/api/login → forwards to User microservice https://localhost:7269/users/User/login.
+      "UpstreamPathTemplate": "/users/{everything}",
+
+      // Allowed HTTP methods for this route.
+      // Specifying them explicitly ensures better control and clarity.
+      "UpstreamHttpMethod": [ "Get", "Post", "Put", "Delete", "Patch" ],
+
+      // The internal path pattern used by the User microservice.
+      // "/api/{everything}" means it will forward the same trailing path
+      // to the UserService API (e.g., /api/login, /api/register, etc.).
+      "DownstreamPathTemplate": "/api/{everything}",
+
+      // The communication scheme used between Gateway and microservice.
+      // Using HTTPS ensures encrypted communication internally.
+      "DownstreamScheme": "https",
+
+      // Host and port where the actual UserService is running.
+      // This is not publicly accessible — it’s the private internal URL.
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7269
+        }
+      ]
+    },
+
+    // ==========================================================
+    //  PRODUCT SERVICE ROUTE
+    // ==========================================================
+    {
+      // Gateway route for all product-related endpoints.
+      // Example: GET https://localhost:7047/products/list → forwards internally.
+      "UpstreamPathTemplate": "/products/{everything}",
+      "UpstreamHttpMethod": [ "Get", "Post", "Put", "Delete", "Patch" ],
+
+      // Downstream path mapping to your ProductService API.
+      "DownstreamPathTemplate": "/api/{everything}",
+      "DownstreamScheme": "https",
+
+      // The internal host and port for ProductService
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7234
+        }
+      ]
+    },
+
+    // ==========================================================
+    // ORDER SERVICE ROUTE
+    // ==========================================================
+    {
+      // Handles all requests related to orders (create, cancel, fetch, etc.).
+      // Example: POST https://localhost:7047/orders/create → OrderService.
+      "UpstreamPathTemplate": "/orders/{everything}",
+      "UpstreamHttpMethod": [ "Get", "Post", "Put", "Delete", "Patch" ],
+
+      // Downstream path mapping to your OrderService API.
+      "DownstreamPathTemplate": "/api/{everything}",
+      "DownstreamScheme": "https",
+
+      // The internal host and port for OrderService
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7082
+        }
+      ]
+    },
+
+    // ==========================================================
+    // PAYMENT SERVICE ROUTE
+    // ==========================================================
+    {
+      // Routes payment-related API requests (initiate, confirm, refund, etc.)
+      // Example: POST https://localhost:7047/payments/initiate → PaymentService.
+      "UpstreamPathTemplate": "/payments/{everything}",
+      "UpstreamHttpMethod": [ "Get", "Post", "Put", "Delete", "Patch" ],
+
+      // Internal mapping for PaymentService APIs.
+      "DownstreamPathTemplate": "/api/{everything}",
+      "DownstreamScheme": "https",
+
+      // PaymentService host and port.
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7154
+        }
+      ]
+    },
+
+    // ==========================================================
+    // NOTIFICATION SERVICE ROUTE
+    // ==========================================================
+    {
+      // Manages all notification-related APIs (send, fetch, status, etc.)
+      // Example: POST https://localhost:7047/notifications/send → NotificationService.
+      "UpstreamPathTemplate": "/notifications/{everything}",
+      "UpstreamHttpMethod": [ "Get", "Post", "Put", "Delete", "Patch" ],
+
+      // Downstream route for NotificationService.
+      "DownstreamPathTemplate": "/api/{everything}",
+      "DownstreamScheme": "https",
+
+      // Internal endpoint for NotificationService.
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 7192
+        }
+      ]
+    }
+  ]
+}

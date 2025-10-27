@@ -16,7 +16,9 @@ using OrderService.Infrastructure.DependencyInjection;
 using OrderService.Infrastructure.Messaging.Extensions;
 using OrderService.Infrastructure.Messaging.Producers;
 using OrderService.Infrastructure.Persistence;
+using OrdersService.API.Middlewares;
 using RabbitMQ.Client;
+using Serilog;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -27,6 +29,15 @@ namespace OrderService.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure Serilog from appsettings.json
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext()
+                .CreateLogger();
+
+            builder.Host.UseSerilog();
+
 
             // Add services to the container.
             builder.Services.AddControllers()
@@ -180,6 +191,9 @@ namespace OrderService.API
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // Add Correlation Middleware before MapControllers
+            app.UseCorrelationId();
 
             app.MapControllers();
 

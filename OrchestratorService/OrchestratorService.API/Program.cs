@@ -1,13 +1,15 @@
-﻿using Messaging.Common.Options;
+﻿using Messaging.Common.Extensions;
+using Messaging.Common.Options;
 using Messaging.Common.Publishing;
 using Messaging.Common.Topology;
 using Microsoft.Extensions.Options;
+using OrchestratorService.API.Middlewares;
 using OrchestratorService.Application.Services;
 using OrchestratorService.Contracts.Messaging;
+using OrchestratorService.Infrastructure.Messaging.Extensions;
 using OrchestratorService.Infrastructure.Messaging.Producers;
 using RabbitMQ.Client;
-using Messaging.Common.Extensions;
-using OrchestratorService.Infrastructure.Messaging.Extensions;
+using Serilog;
 
 namespace OrchestratorService.API
 {
@@ -16,6 +18,14 @@ namespace OrchestratorService.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure Serilog from appsettings.json
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext()
+                .CreateLogger();
+
+            builder.Host.UseSerilog();
 
             // Add services to the container.
             builder.Services.AddControllers()
@@ -98,6 +108,9 @@ namespace OrchestratorService.API
             app.UseHttpsRedirection();
 
             app.UseAuthorization();
+
+            // Add Correlation Middleware before MapControllers
+            app.UseCorrelationId();
 
             app.MapControllers();
 

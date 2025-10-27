@@ -2,12 +2,14 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using PaymentService.API.Middlewares;
 using PaymentService.Application.DTOs;
 using PaymentService.Application.Interfaces;
 using PaymentService.Application.Services;
 using PaymentService.Application.Validators;
 using PaymentService.Infrastructure.DependencyInjection;
 using PaymentService.Infrastructure.Persistence;
+using Serilog;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -18,6 +20,15 @@ namespace PaymentService.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure Serilog from appsettings.json
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext()
+                .CreateLogger();
+
+            builder.Host.UseSerilog();
+
 
             // Add services to the container.
             builder.Services.AddControllers()
@@ -77,6 +88,9 @@ namespace PaymentService.API
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // Add Correlation Middleware before MapControllers
+            app.UseCorrelationId();
 
             app.MapControllers();
 

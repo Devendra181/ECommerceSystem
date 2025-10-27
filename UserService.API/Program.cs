@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 using System.Text;
+using UserService.API.Middlewares;
 using UserService.Application.Services;
 using UserService.Domain.Repositories;
 using UserService.Infrastructure.Identity;
@@ -16,6 +18,15 @@ namespace UserService.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure Serilog from appsettings.json
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext()
+                .CreateLogger();
+
+            builder.Host.UseSerilog();
+
 
             // Add services to the container.
             builder.Services.AddControllers()
@@ -92,6 +103,9 @@ namespace UserService.API
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // Add Correlation Middleware before MapControllers
+            app.UseCorrelationId();
 
             app.MapControllers();
 

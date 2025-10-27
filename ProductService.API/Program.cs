@@ -4,6 +4,7 @@ using Messaging.Common.Publishing;
 using Messaging.Common.Topology;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using ProductService.API.Middlewares;
 using ProductService.Application.Interfaces;
 using ProductService.Application.Mappings;
 using ProductService.Application.Messaging;
@@ -15,6 +16,7 @@ using ProductService.Infrastructure.Messaging.Producers;
 using ProductService.Infrastructure.Persistence;
 using ProductService.Infrastructure.Repositories;
 using RabbitMQ.Client;
+using Serilog;
 using System.Text.Json.Serialization;
 
 namespace ProductService.API
@@ -24,6 +26,14 @@ namespace ProductService.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure Serilog from appsettings.json
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext()
+                .CreateLogger();
+
+            builder.Host.UseSerilog();
 
             // Add services to the container.
             builder.Services.AddControllers()
@@ -135,6 +145,9 @@ namespace ProductService.API
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // Add Correlation Middleware before MapControllers
+            app.UseCorrelationId();
 
             app.MapControllers();
 

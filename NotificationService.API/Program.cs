@@ -3,6 +3,7 @@ using Messaging.Common.Options;
 using Messaging.Common.Topology;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using NotificationService.API.Middlewares;
 using NotificationService.Application.Handlers;
 using NotificationService.Application.Interfaces;
 using NotificationService.Application.Messaging;
@@ -16,6 +17,7 @@ using NotificationService.Infrastructure.Messaging.Extensions;
 using NotificationService.Infrastructure.Persistence;
 using NotificationService.Infrastructure.Repositories;
 using RabbitMQ.Client;
+using Serilog;
 using System.Text.Json.Serialization;
 
 namespace NotificationService.API
@@ -25,6 +27,14 @@ namespace NotificationService.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Configure Serilog from appsettings.json
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext()
+                .CreateLogger();
+
+            builder.Host.UseSerilog();
 
             // Add services to the container.
             builder.Services.AddControllers()
@@ -123,6 +133,9 @@ namespace NotificationService.API
             app.UseHttpsRedirection();
 
             app.UseAuthorization();
+
+            // Add Correlation Middleware before MapControllers
+            app.UseCorrelationId();
 
             app.MapControllers();
 

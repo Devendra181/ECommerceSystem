@@ -1,7 +1,10 @@
 ﻿using APIGateway.Middlewares;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using Ocelot.DependencyInjection;
 using Ocelot.Middleware;
 using Serilog;
+using System.Text;
 
 namespace APIGateway
 {
@@ -10,6 +13,33 @@ namespace APIGateway
         public async static Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // JWT Authentication (edge validation when token is present)
+            builder.Services
+                .AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                })
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+                        ValidateAudience = false,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(
+                            Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]!)
+                        ),
+
+                        ClockSkew = TimeSpan.Zero
+                    };
+                });
+
+            builder.Services.AddAuthorization();
+
 
             // ---------------------------------------------------------------------
             // Configure Serilog as the application's main logging provider.
@@ -93,6 +123,8 @@ namespace APIGateway
             //      (passwords, tokens, etc.), and includes timing metrics.
             app.UseCorrelationId();
             app.UseRequestResponseLogging();
+
+            app.UseGatewayBearerValidation();
 
             // ---------------------------------------------------------------
             // Register Ocelot Middleware (Core Gateway Logic)

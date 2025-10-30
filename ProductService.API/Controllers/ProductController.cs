@@ -1,8 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using ProductService.API.DTOs;
 using ProductService.Application.DTOs;
 using ProductService.Application.Interfaces;
-
 namespace ProductService.Api.Controllers
 {
     [ApiController]
@@ -18,7 +18,12 @@ namespace ProductService.Api.Controllers
             _logger = logger;
         }
 
+        // =========================
+        // PUBLIC (AllowAnonymous)
+        // =========================
+
         [HttpGet]
+        [AllowAnonymous] //Authentication not required
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetAll([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
@@ -36,6 +41,7 @@ namespace ProductService.Api.Controllers
         }
 
         [HttpGet("{id:guid}")]
+        [AllowAnonymous] //Authentication not required
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -57,6 +63,9 @@ namespace ProductService.Api.Controllers
         }
 
         [HttpGet("search")]
+        [AllowAnonymous] //Authentication not required
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Search([FromQuery] string? searchTerm, [FromQuery] Guid? categoryId,
             [FromQuery] decimal? minPrice, [FromQuery] decimal? maxPrice,
             [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
@@ -73,14 +82,21 @@ namespace ProductService.Api.Controllers
             }
         }
 
+        // =============================
+        // AUTHENTICATED (Authorize)
+        // =============================
+
         [HttpPost]
+        [Authorize] // any authenticated user
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Create([FromBody] ProductCreateDTO createDto)
         {
             if (!ModelState.IsValid)
-                return BadRequest(ApiResponse<string>.FailResponse("Validation failed", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()));
+                return BadRequest(ApiResponse<string>.FailResponse("Validation failed",
+                    ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()));
 
             try
             {
@@ -98,14 +114,17 @@ namespace ProductService.Api.Controllers
         }
 
         [HttpPut("{id:guid}")]
+        [Authorize] // any authenticated user
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Update(Guid id, [FromBody] ProductUpdateDTO updateDto)
         {
             if (!ModelState.IsValid)
-                return BadRequest(ApiResponse<string>.FailResponse("Validation failed", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()));
+                return BadRequest(ApiResponse<string>.FailResponse("Validation failed",
+                    ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()));
 
             if (id != updateDto.Id)
                 return BadRequest(ApiResponse<string>.FailResponse("ID mismatch"));
@@ -125,8 +144,39 @@ namespace ProductService.Api.Controllers
             }
         }
 
-        [HttpDelete("{id:guid}")]
+        [HttpPost("GetByIds")]
+        [Authorize] // any authenticated user
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetProductByIds([FromBody] List<Guid> productIds)
+        {
+            try
+            {
+                if (productIds == null || !productIds.Any())
+                    return BadRequest(ApiResponse<string>.FailResponse("Product IDs list cannot be empty."));
+
+                var products = await _productService.GetByIdsAsync(productIds);
+
+                return Ok(ApiResponse<List<ProductDTO>>.SuccessResponse(products));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GetProductByIds");
+                return StatusCode(500, ApiResponse<string>.FailResponse("Internal server error"));
+            }
+        }
+
+        // ============================
+        // ADMIN-ONLY (Role-based)
+        // ============================
+
+        [HttpDelete("{id:guid}")]
+        [Authorize(Roles = "Customer")] // requires role claim "Admin"
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Delete(Guid id)
         {
@@ -141,27 +191,6 @@ namespace ProductService.Api.Controllers
                 return StatusCode(500, ApiResponse<string>.FailResponse("Internal server error"));
             }
         }
-
-        [HttpPost("GetByIds")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> GetProductByIds([FromBody] List<Guid> productIds)
-        {
-
-            try
-            {
-                if (productIds == null || !productIds.Any())
-                    return BadRequest("Product IDs list cannot be empty.");
-
-                var products = await _productService.GetByIdsAsync(productIds);
-
-                return Ok(ApiResponse<List<ProductDTO>>.SuccessResponse(products));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in GetProductByIds");
-                return StatusCode(500, ApiResponse<string>.FailResponse("Internal server error"));
-            }
-        }
     }
 }
+

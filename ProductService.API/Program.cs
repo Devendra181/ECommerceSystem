@@ -2,8 +2,10 @@
 using Messaging.Common.Options;
 using Messaging.Common.Publishing;
 using Messaging.Common.Topology;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using ProductService.API.Middlewares;
 using ProductService.Application.Interfaces;
 using ProductService.Application.Mappings;
@@ -17,6 +19,7 @@ using ProductService.Infrastructure.Persistence;
 using ProductService.Infrastructure.Repositories;
 using RabbitMQ.Client;
 using Serilog;
+using System.Text;
 using System.Text.Json.Serialization;
 
 namespace ProductService.API
@@ -116,6 +119,26 @@ namespace ProductService.API
             //       this consumer receives it, processes the stock reservation,
             //       and then publishes either StockReservedCompletedEvent or StockReservationFailedEvent.
             builder.Services.AddStockReserveConsumer();
+
+            //Adding JWT Authentication
+            builder.Services.AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            })
+            .AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = false,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]!))
+                };
+            });
+
 
             var app = builder.Build();
 

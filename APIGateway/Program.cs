@@ -1,6 +1,8 @@
 ﻿using APIGateway.Middlewares;
+using APIGateway.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Newtonsoft.Json.Serialization;
 using Ocelot.DependencyInjection;
 using Ocelot.Middleware;
 using Serilog;
@@ -13,6 +15,26 @@ namespace APIGateway
         public async static Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // MVC Controllers + Newtonsoft JSON Configuration
+            builder.Services
+                .AddControllers()
+                .AddNewtonsoftJson(options =>
+                {
+                    // Newtonsoft.Json used instead of System.Text.Json
+                    // because it provides finer control over property naming
+                    // and serialization behavior.
+                    options.SerializerSettings.ContractResolver = new DefaultContractResolver
+                    {
+                        // Preserve property names as defined in the DTOs.
+                        // No camelCasing or snake_casing transformation.
+                        NamingStrategy = new DefaultNamingStrategy()
+                    };
+
+                    // Optional: Uncomment if you want Enum values serialized as strings
+                    // options.SerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
+                });
+
 
             // JWT Authentication (edge validation when token is present)
             builder.Services
@@ -38,7 +60,7 @@ namespace APIGateway
                     };
                 });
 
-            builder.Services.AddAuthorization();
+            builder.Services.AddAuthorization(); // Enables [Authorize] attributes.
 
 
             // ---------------------------------------------------------------------
@@ -105,9 +127,56 @@ namespace APIGateway
             // Passing builder.Configuration allows Ocelot to access the ocelot.json content.
             builder.Services.AddOcelot(builder.Configuration);
 
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen();
+
+            // Downstream Microservice Clients (typed HttpClientFactory)
+            // Each downstream service (Order, User, Product, Payment)
+            // is registered with a named HttpClient. This allows
+            // resilience, pooling, and reuse within DI-based consumers.
+            var urls = builder.Configuration.GetSection("ServiceUrls");
+
+            builder.Services.AddHttpClient("OrderService", c =>
+            {
+                c.BaseAddress = new Uri(urls["OrderService"]!);
+            });
+
+            builder.Services.AddHttpClient("UserService", c =>
+            {
+                c.BaseAddress = new Uri(urls["UserService"]!);
+            });
+
+            builder.Services.AddHttpClient("ProductService", c =>
+            {
+                c.BaseAddress = new Uri(urls["ProductService"]!);
+            });
+
+            builder.Services.AddHttpClient("PaymentService", c =>
+            {
+                c.BaseAddress = new Uri(urls["PaymentService"]!);
+            });
+
+            // Custom Aggregation Service Registration
+            // The aggregator composes multiple downstream responses (Order, User,
+            // Product, Payment) into a single unified payload.
+            builder.Services.AddScoped<IOrderSummaryAggregator, OrderSummaryAggregator>();
+
+            // Build WebApplication instance
             var app = builder.Build();
 
+            // Swagger (API Explorer for development/debugging)
+            if (app.Environment.IsDevelopment())
+            {
+                app.UseSwagger();
+                app.UseSwaggerUI();
+            }
+
             app.UseHttpsRedirection();
+
+
+            // Global Cross-Cutting Middleware
+            // Applied to ALL requests — both custom /gateway endpoints and
+            // proxied Ocelot routes.
 
             // ---------------------------------------------------------------------
             // Add custom middleware before Ocelot.
@@ -121,8 +190,38 @@ namespace APIGateway
             // UseRequestResponseLogging()
             //    → Logs the request and response bodies, masking sensitive fields
             //      (passwords, tokens, etc.), and includes timing metrics.
-            app.UseCorrelationId();
-            app.UseRequestResponseLogging();
+            app.UseCorrelationId(); // Assigns a unique ID to every request for traceability.
+            app.UseRequestResponseLogging(); // Logs request and response details for diagnostics.
+
+
+            // BRANCH 1: Custom Aggregated Endpoints (/gateway/*)
+            // Any route starting with /gateway (e.g. /gateway/order-summary)
+            // is handled directly by ASP.NET controllers — not Ocelot.
+            app.MapWhen(
+                ctx => ctx.Request.Path.StartsWithSegments("/gateway", StringComparison.OrdinalIgnoreCase),
+                gatewayApp =>
+                {
+                    // Enable endpoint routing for this sub-pipeline
+                    gatewayApp.UseRouting();
+
+                    // Apply authentication & authorization
+                    gatewayApp.UseAuthentication();
+                    gatewayApp.UseAuthorization();
+
+                    // Register controller actions under this branch
+                    gatewayApp.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapControllers();
+                    });
+                });
+
+            // BRANCH 2: Ocelot Reverse Proxy
+            // All requests NOT starting with /gateway are handled by Ocelot.
+            // These requests are routed to the correct microservice defined in ocelot.json.
+            app.UseAuthentication(); // Needed so Ocelot can read HttpContext.User
+
+            // NOTE: Do NOT call UseAuthorization().
+
 
             app.UseGatewayBearerValidation();
 

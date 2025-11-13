@@ -1,11 +1,13 @@
 ﻿using APIGateway.Middlewares;
 using APIGateway.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json.Serialization;
 using Ocelot.DependencyInjection;
 using Ocelot.Middleware;
 using Serilog;
+using System.IO.Compression;
 using System.Text;
 
 namespace APIGateway
@@ -15,6 +17,33 @@ namespace APIGateway
         public async static Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+
+            //// Add Built-in Response Compression Services
+            //builder.Services.AddResponseCompression(options =>
+            //{
+            //    // Enable compression for HTTPS as well
+            //    options.EnableForHttps = true;
+
+            //    // Use Gzip as the compression provider
+            //    options.Providers.Add<GzipCompressionProvider>();
+
+            //    // Compress only textual responses (JSON, text, HTML)
+            //    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
+            //    {
+            //        "application/json",
+            //        "text/plain",
+            //        "text/html"
+            //    });
+            //});
+
+            // Configure Gzip Compression Level
+            builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+            {
+                // Optimal = higher compression ratio (slightly more CPU)
+                options.Level = CompressionLevel.Optimal;
+            });
+
 
             // MVC Controllers + Newtonsoft JSON Configuration
             builder.Services
@@ -173,6 +202,10 @@ namespace APIGateway
 
             app.UseHttpsRedirection();
 
+            // Enable Response Compression middleware
+            // Response Compression should be applied early
+            // UseResponseCompression() must run before anything that writes the response body (controllers, reverse proxy, Ocelot/YARP).
+            app.UseResponseCompression();
 
             // Global Cross-Cutting Middleware
             // Applied to ALL requests — both custom /gateway endpoints and

@@ -1,4 +1,5 @@
 ﻿using APIGateway.Middlewares;
+using APIGateway.Models;
 using APIGateway.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -17,33 +18,6 @@ namespace APIGateway
         public async static Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-
-
-            //// Add Built-in Response Compression Services
-            //builder.Services.AddResponseCompression(options =>
-            //{
-            //    // Enable compression for HTTPS as well
-            //    options.EnableForHttps = true;
-
-            //    // Use Gzip as the compression provider
-            //    options.Providers.Add<GzipCompressionProvider>();
-
-            //    // Compress only textual responses (JSON, text, HTML)
-            //    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
-            //    {
-            //        "application/json",
-            //        "text/plain",
-            //        "text/html"
-            //    });
-            //});
-
-            // Configure Gzip Compression Level
-            builder.Services.Configure<GzipCompressionProviderOptions>(options =>
-            {
-                // Optimal = higher compression ratio (slightly more CPU)
-                options.Level = CompressionLevel.Optimal;
-            });
-
 
             // MVC Controllers + Newtonsoft JSON Configuration
             builder.Services
@@ -64,32 +38,30 @@ namespace APIGateway
                     // options.SerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
                 });
 
+            // Bind CompressionSettings section to our model using opions pattern
+            builder.Services.Configure<CompressionSettings>(
+                builder.Configuration.GetSection("CompressionSettings"));
 
-            // JWT Authentication (edge validation when token is present)
-            builder.Services
-                .AddAuthentication(options =>
-                {
-                    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-                })
-                .AddJwtBearer(options =>
-                {
-                    options.TokenValidationParameters = new TokenValidationParameters
-                    {
-                        ValidateIssuer = true,
-                        ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
-                        ValidateAudience = false,
-                        ValidateLifetime = true,
-                        ValidateIssuerSigningKey = true,
-                        IssuerSigningKey = new SymmetricSecurityKey(
-                            Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]!)
-                        ),
+            // ---------------------------------------------------------------
+            // Load Ocelot Configuration
+            // ---------------------------------------------------------------
+            // Ocelot uses a JSON file (ocelot.json) that defines all routes —
+            // mapping between client-facing (Upstream) URLs and internal microservice (Downstream) URLs.
+            //
+            // optional:false  → ensures ocelot.json must exist; app won’t start without it.
+            // reloadOnChange:true → allows automatic route updates during development
+            //                       without restarting the API Gateway.
+            builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
 
-                        ClockSkew = TimeSpan.Zero
-                    };
-                });
+            // ---------------------------------------------------------------
+            // Register Ocelot Services
+            // ---------------------------------------------------------------
+            // This adds all required Ocelot services (middleware, configuration providers,
+            // route matching, downstream request handling, etc.) to the DI container.
+            //
+            // Passing builder.Configuration allows Ocelot to access the ocelot.json content.
+            builder.Services.AddOcelot(builder.Configuration);
 
-            builder.Services.AddAuthorization(); // Enables [Authorize] attributes.
 
 
             // ---------------------------------------------------------------------
@@ -132,29 +104,33 @@ namespace APIGateway
             // log output everywhere.
             builder.Host.UseSerilog();
 
-            // ---------------------------------------------------------------
-            // Load Ocelot Configuration
-            // ---------------------------------------------------------------
-            // Ocelot uses a JSON file (ocelot.json) that defines all routes —
-            // mapping between client-facing (Upstream) URLs and internal microservice (Downstream) URLs.
-            //
-            // optional:false  → ensures ocelot.json must exist; app won’t start without it.
-            // reloadOnChange:true → allows automatic route updates during development
-            //                       without restarting the API Gateway.
-            builder.Configuration.AddJsonFile(
-                "ocelot.json",
-                optional: false,
-                reloadOnChange: true
-            );
+            // ---------------------------------------------------------------------
+            // JWT Authentication (edge validation when token is present)
+            // ---------------------------------------------------------------------
+            builder.Services
+                .AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                })
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+                        ValidateAudience = false,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(
+                            Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]!)
+                        ),
 
-            // ---------------------------------------------------------------
-            // Register Ocelot Services
-            // ---------------------------------------------------------------
-            // This adds all required Ocelot services (middleware, configuration providers,
-            // route matching, downstream request handling, etc.) to the DI container.
-            //
-            // Passing builder.Configuration allows Ocelot to access the ocelot.json content.
-            builder.Services.AddOcelot(builder.Configuration);
+                        ClockSkew = TimeSpan.Zero
+                    };
+                });
+
+            builder.Services.AddAuthorization(); // Enables [Authorize] attributes.
 
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
@@ -202,10 +178,10 @@ namespace APIGateway
 
             app.UseHttpsRedirection();
 
-            // Enable Response Compression middleware
-            // Response Compression should be applied early
-            // UseResponseCompression() must run before anything that writes the response body (controllers, reverse proxy, Ocelot/YARP).
-            app.UseResponseCompression();
+
+            // Custom conditional compression middleware
+            app.UseMiddleware<ConditionalResponseCompressionMiddleware>();
+
 
             // Global Cross-Cutting Middleware
             // Applied to ALL requests — both custom /gateway endpoints and

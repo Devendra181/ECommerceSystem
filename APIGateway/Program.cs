@@ -1,4 +1,5 @@
-﻿using APIGateway.Middlewares;
+﻿using APIGateway.Extensions;
+using APIGateway.Middlewares;
 using APIGateway.Models;
 using APIGateway.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -37,6 +38,11 @@ namespace APIGateway
                     // Optional: Uncomment if you want Enum values serialized as strings
                     // options.SerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
                 });
+
+            // Reads the RateLimiting section from appsettings.json
+            // Binds it to your RateLimitSettings model
+            // Registers the RateLimitPolicyService as a singleton
+            builder.Services.AddCustomRateLimiting(builder.Configuration);
 
             // Bind CompressionSettings section to our model using opions pattern
             builder.Services.Configure<CompressionSettings>(
@@ -217,6 +223,9 @@ namespace APIGateway
                     gatewayApp.UseAuthentication();
                     gatewayApp.UseAuthorization();
 
+                    // Apply rate limiting also inside this sub-pipeline if needed
+                    gatewayApp.UseCustomRateLimiting();
+
                     // Register controller actions under this branch
                     gatewayApp.UseEndpoints(endpoints =>
                     {
@@ -231,7 +240,10 @@ namespace APIGateway
 
             // NOTE: Do NOT call UseAuthorization().
 
+            // Register rate limiting globally here
+            app.UseCustomRateLimiting();
 
+            // Middleware for pre-validation of Bearer tokens (optional)
             app.UseGatewayBearerValidation();
 
             // ---------------------------------------------------------------

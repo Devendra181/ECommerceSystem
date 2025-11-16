@@ -16,6 +16,7 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 	<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.18" />
 	<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+	<PackageReference Include="System.Threading.RateLimiting" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>

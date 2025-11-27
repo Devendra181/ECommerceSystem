@@ -172,6 +172,25 @@ namespace APIGateway
             // Product, Payment) into a single unified payload.
             builder.Services.AddScoped<IOrderSummaryAggregator, OrderSummaryAggregator>();
 
+            //----------------------------Register Redis -------------------------------
+            // Register Redis as the distributed caching provider for the API Gateway.
+            //    This allows our middleware (and any service) to store and retrieve cache data 
+            //    in a centralized Redis instance instead of in-memory cache.
+            builder.Services.AddStackExchangeRedisCache(options =>
+            {
+                // The connection string defines how our app connects to the Redis server.
+                //    Example format: "localhost:6379" (for local Redis)
+                //    or "redis:6379,password=yourpassword,ssl=False,abortConnect=False" (for containerized/remote setup)
+                //    The value is read from appsettings.json → "RedisCacheSettings:ConnectionString".
+                options.Configuration = builder.Configuration["RedisCacheSettings:ConnectionString"];
+
+                // The instance name is an optional logical prefix used to differentiate keys
+                //    when multiple applications share the same Redis server.
+                //    Example: If InstanceName = "ApiGateway_", all cache keys will start with that prefix.
+                //    This helps prevent key collisions between different microservices or environments.
+                options.InstanceName = builder.Configuration["RedisCacheSettings:InstanceName"];
+            });
+
             // Build WebApplication instance
             var app = builder.Build();
 
@@ -208,6 +227,8 @@ namespace APIGateway
             app.UseCorrelationId(); // Assigns a unique ID to every request for traceability.
             app.UseRequestResponseLogging(); // Logs request and response details for diagnostics.
 
+            // Enable Redis-based Response Caching
+            app.UseRedisResponseCaching();
 
             // BRANCH 1: Custom Aggregated Endpoints (/gateway/*)
             // Any route starting with /gateway (e.g. /gateway/order-summary)

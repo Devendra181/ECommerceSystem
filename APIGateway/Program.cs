@@ -229,25 +229,28 @@ namespace APIGateway
             // Applied to ALL requests — both custom /gateway endpoints and
             // proxied Ocelot routes.
 
-            // 1. Correlation ID (MUST RUN FIRST)
             // ---------------------------------------------------------------------
             // Add custom middleware before Ocelot.
             // ---------------------------------------------------------------------
+
+            // 1. Correlation ID (MUST RUN FIRST)
             //
             // UseCorrelationId()
             //    → Attaches a unique correlation ID (X-Correlation-ID) to every request.
             //      This value is pushed into Serilog’s LogContext so you can trace
             //      the same request across multiple microservices easily.
+
+            app.UseCorrelationId();
+
+            // 2. Logging (request/response)
             //
             // UseRequestResponseLogging()
             //    → Logs the request and response bodies, masking sensitive fields
             //      (passwords, tokens, etc.), and includes timing metrics.
-            app.UseCorrelationId();
-
-            // 2. Logging (request/response)
             app.UseRequestResponseLogging();
 
             // 3. Authentication (Validate JWT Signature)
+            //
             // All requests NOT starting with /gateway are handled by Ocelot/YARP.
             // These requests are routed to the correct microservice defined in ocelot.json.
             app.UseAuthentication(); // Needed so Ocelot can read HttpContext.User
@@ -260,11 +263,11 @@ namespace APIGateway
             // 5. Rate Limiting (after authentication → per user)
             app.UseCustomRateLimiting();
 
-            // 6. Compression (must be LAST before proxy)
-            app.UseMiddleware<ConditionalResponseCompressionMiddleware>();
-
-            // 7. Redis Cache (must run before compression)
+            // 6. Redis Cache (must run before compression)
             app.UseRedisResponseCaching();
+
+            // 7. Compression (must be LAST before proxy)
+            app.UseMiddleware<ConditionalResponseCompressionMiddleware>();
 
             // BRANCH 1: Custom Aggregated Endpoints (/gateway/*)
             // Any route starting with /gateway (e.g. /gateway/order-summary)

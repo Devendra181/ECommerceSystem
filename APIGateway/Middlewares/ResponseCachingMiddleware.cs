@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Caching.Distributed;
+using Serilog;
 namespace APIGateway.Middlewares
 {
     // Custom middleware responsible for handling response caching
@@ -60,7 +61,20 @@ namespace APIGateway.Middlewares
             var cacheKey = GenerateCacheKey(context);
 
             // STEP 6: Attempt to fetch the cached response from Redis
-            var cachedResponse = await _cache.GetStringAsync(cacheKey);
+            string? cachedResponse = null;
+            try 
+            {
+                 cachedResponse = await _cache.GetStringAsync(cacheKey);
+            }
+            catch (Exception ex)
+            {
+                // If Redis is down or any cache operation fails, skip caching and
+                // continue the pipeline so the request still succeeds instead of 500.
+                Log.Error("Failed to get data from redis server: " + ex.ToString());
+                await _next(context);
+                return;
+            }
+
             if (!string.IsNullOrEmpty(cachedResponse))
             {
                 // If found → directly return cached content to client (bypass microservice call)
@@ -86,10 +100,20 @@ namespace APIGateway.Middlewares
                 var responseBody = await new StreamReader(memoryStream).ReadToEndAsync();
 
                 // Store response in Redis with the computed TTL
-                await _cache.SetStringAsync(cacheKey, responseBody, new DistributedCacheEntryOptions
+                // Attempt to store response in Redis with the computed TTL. If Redis is
+                // unavailable, swallow the exception but still return the response to client.
+                try
                 {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(cacheDuration)
-                });
+                    await _cache.SetStringAsync(cacheKey, responseBody, new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(cacheDuration)
+                    });
+                }
+                catch
+                {
+                    // Ignore cache set failures to avoid converting them into 500 errors.
+                    Log.Error("Failed to cache response for key {CacheKey}", cacheKey);
+                }
 
                 // Reset the stream and copy response back to the original output stream
                 memoryStream.Seek(0, SeekOrigin.Begin);

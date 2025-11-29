@@ -3,20 +3,17 @@ using APIGateway.Middlewares;
 using APIGateway.Models;
 using APIGateway.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json.Serialization;
 using Ocelot.DependencyInjection;
-using Ocelot.Middleware;
 using Serilog;
-using System.IO.Compression;
 using System.Text;
 
 namespace APIGateway
 {
     public class Program
     {
-        public async static Task Main(string[] args)
+        public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
 
@@ -39,6 +36,17 @@ namespace APIGateway
                     // options.SerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
                 });
 
+            // Load reverseproxy.json (YARP)
+            builder.Configuration.AddJsonFile(
+                "reverseproxy.json",
+                optional: false,
+                reloadOnChange: true
+            );
+
+            // Register YARP
+            builder.Services.AddReverseProxy()
+                .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
             // Reads the RateLimiting section from appsettings.json
             // Binds it to your RateLimitSettings model
             // Registers the RateLimitPolicyService as a singleton
@@ -48,6 +56,8 @@ namespace APIGateway
             builder.Services.Configure<CompressionSettings>(
                 builder.Configuration.GetSection("CompressionSettings"));
 
+            // Ocelot Configuration (API Gateway Routing Layer)
+            // Comment the following
             // ---------------------------------------------------------------
             // Load Ocelot Configuration
             // ---------------------------------------------------------------
@@ -57,7 +67,7 @@ namespace APIGateway
             // optional:false  → ensures ocelot.json must exist; app won’t start without it.
             // reloadOnChange:true → allows automatic route updates during development
             //                       without restarting the API Gateway.
-            builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
+            //builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
 
             // ---------------------------------------------------------------
             // Register Ocelot Services
@@ -66,10 +76,10 @@ namespace APIGateway
             // route matching, downstream request handling, etc.) to the DI container.
             //
             // Passing builder.Configuration allows Ocelot to access the ocelot.json content.
-            builder.Services.AddOcelot(builder.Configuration);
+            //builder.Services.AddOcelot(builder.Configuration);
 
 
-
+            // Structured Logging Setup (Serilog)
             // ---------------------------------------------------------------------
             // Configure Serilog as the application's main logging provider.
             // ---------------------------------------------------------------------
@@ -94,9 +104,9 @@ namespace APIGateway
             //     → Finalizes the logger and assigns it to Log.Logger,
             //       making it globally available via Serilog’s static Log class.
             Log.Logger = new LoggerConfiguration()
-                 .ReadFrom.Configuration(builder.Configuration)
-                 .Enrich.FromLogContext()
-                 .CreateLogger();
+                .ReadFrom.Configuration(builder.Configuration)
+                .Enrich.FromLogContext()
+                .CreateLogger();
 
             // ---------------------------------------------------------------------
             // Replace the default .NET logging system with Serilog.
@@ -108,38 +118,47 @@ namespace APIGateway
             // The call below tells the host to pipe all framework and application
             // logs through Serilog instead. This ensures consistent, structured
             // log output everywhere.
-            builder.Host.UseSerilog();
+            builder.Host.UseSerilog(); 
+
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen();
 
             // ---------------------------------------------------------------------
-            // JWT Authentication (edge validation when token is present)
+            // JWT Authentication (edge validation when token is present)  (Bearer Token Validation)
             // ---------------------------------------------------------------------
             builder.Services
                 .AddAuthentication(options =>
                 {
+                    // Define the default authentication scheme as Bearer
                     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
                 })
                 .AddJwtBearer(options =>
                 {
+                    // Token validation configuration
                     options.TokenValidationParameters = new TokenValidationParameters
                     {
                         ValidateIssuer = true,
                         ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+
+                        // We’re not validating audience because microservices share same gateway.
                         ValidateAudience = false,
+
+                        // Enforce token expiry check
                         ValidateLifetime = true,
+
+                        // Ensure token signature integrity using secret key
                         ValidateIssuerSigningKey = true,
                         IssuerSigningKey = new SymmetricSecurityKey(
                             Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]!)
                         ),
 
+                        // No extra grace period for expired tokens
                         ClockSkew = TimeSpan.Zero
                     };
                 });
 
             builder.Services.AddAuthorization(); // Enables [Authorize] attributes.
-
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
 
             // Downstream Microservice Clients (typed HttpClientFactory)
             // Each downstream service (Order, User, Product, Payment)
@@ -166,6 +185,9 @@ namespace APIGateway
             {
                 c.BaseAddress = new Uri(urls["PaymentService"]!);
             });
+
+            // Register IHttpContextAccessor
+            builder.Services.AddHttpContextAccessor();
 
             // Custom Aggregation Service Registration
             // The aggregator composes multiple downstream responses (Order, User,
@@ -203,15 +225,11 @@ namespace APIGateway
 
             app.UseHttpsRedirection();
 
-
-            // Custom conditional compression middleware
-            app.UseMiddleware<ConditionalResponseCompressionMiddleware>();
-
-
             // Global Cross-Cutting Middleware
             // Applied to ALL requests — both custom /gateway endpoints and
             // proxied Ocelot routes.
 
+            // 1. Correlation ID (MUST RUN FIRST)
             // ---------------------------------------------------------------------
             // Add custom middleware before Ocelot.
             // ---------------------------------------------------------------------
@@ -224,10 +242,28 @@ namespace APIGateway
             // UseRequestResponseLogging()
             //    → Logs the request and response bodies, masking sensitive fields
             //      (passwords, tokens, etc.), and includes timing metrics.
-            app.UseCorrelationId(); // Assigns a unique ID to every request for traceability.
-            app.UseRequestResponseLogging(); // Logs request and response details for diagnostics.
+            app.UseCorrelationId();
 
-            // Enable Redis-based Response Caching
+            // 2. Logging (request/response)
+            app.UseRequestResponseLogging();
+
+            // 3. Authentication (Validate JWT Signature)
+            // All requests NOT starting with /gateway are handled by Ocelot/YARP.
+            // These requests are routed to the correct microservice defined in ocelot.json.
+            app.UseAuthentication(); // Needed so Ocelot can read HttpContext.User
+
+            // NOTE: Do NOT call UseAuthorization().
+
+            // 4. Validate token BEFORE proxying
+            app.UseGatewayBearerValidation();
+
+            // 5. Rate Limiting (after authentication → per user)
+            app.UseCustomRateLimiting();
+
+            // 6. Compression (must be LAST before proxy)
+            app.UseMiddleware<ConditionalResponseCompressionMiddleware>();
+
+            // 7. Redis Cache (must run before compression)
             app.UseRedisResponseCaching();
 
             // BRANCH 1: Custom Aggregated Endpoints (/gateway/*)
@@ -254,19 +290,11 @@ namespace APIGateway
                     });
                 });
 
-            // BRANCH 2: Ocelot Reverse Proxy
-            // All requests NOT starting with /gateway are handled by Ocelot.
-            // These requests are routed to the correct microservice defined in ocelot.json.
-            app.UseAuthentication(); // Needed so Ocelot can read HttpContext.User
+            // BRANCH 2: YARP Reverse Proxy
+            // YARP must be last
+            app.MapReverseProxy();
 
-            // NOTE: Do NOT call UseAuthorization().
-
-            // Register rate limiting globally here
-            app.UseCustomRateLimiting();
-
-            // Middleware for pre-validation of Bearer tokens (optional)
-            app.UseGatewayBearerValidation();
-
+            // Ocelot middleware handles routing, transformation, and load-balancing
             // ---------------------------------------------------------------
             // Register Ocelot Middleware (Core Gateway Logic)
             // ---------------------------------------------------------------
@@ -280,9 +308,10 @@ namespace APIGateway
             // IMPORTANT:
             // This MUST be the LAST middleware in the pipeline,
             // Once Ocelot handles a request, no other middleware executes afterward.
+            // Comment the following
+            // await app.UseOcelot();
 
-            await app.UseOcelot();
-
+            // Start the Application
             app.Run();
         }
     }

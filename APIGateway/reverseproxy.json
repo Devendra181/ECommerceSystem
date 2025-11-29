@@ -1,0 +1,84 @@
+{
+  "ReverseProxy": {
+    "Routes": {
+      "userRoute": {
+        "ClusterId": "userCluster",
+        "Match": {
+          "Path": "/users/{**catch-all}"
+        },
+        "Transforms": [
+          { "PathRemovePrefix": "/users" },
+          { "PathPrefix": "/api" }
+        ]
+      },
+      "productRoute": {
+        "ClusterId": "productCluster",
+        "Match": {
+          "Path": "/products/{**catch-all}"
+        },
+        "Transforms": [
+          { "PathRemovePrefix": "/products" },
+          { "PathPrefix": "/api" }
+        ]
+      },
+      "orderRoute": {
+        "ClusterId": "orderCluster",
+        "Match": {
+          "Path": "/orders/{**catch-all}"
+        },
+        "Transforms": [
+          { "PathRemovePrefix": "/orders" },
+          { "PathPrefix": "/api" }
+        ]
+      },
+      "paymentRoute": {
+        "ClusterId": "paymentCluster",
+        "Match": {
+          "Path": "/payments/{**catch-all}"
+        },
+        "Transforms": [
+          { "PathRemovePrefix": "/payments" },
+          { "PathPrefix": "/api" }
+        ]
+      },
+      "notificationRoute": {
+        "ClusterId": "notificationCluster",
+        "Match": {
+          "Path": "/notifications/{**catch-all}"
+        },
+        "Transforms": [
+          { "PathRemovePrefix": "/notifications" },
+          { "PathPrefix": "/api" }
+        ]
+      }
+    },
+
+    "Clusters": {
+      "userCluster": {
+        "Destinations": {
+          "userApi": { "Address": "https://localhost:7269" }
+        }
+      },
+      "productCluster": {
+        "Destinations": {
+          "productApi": { "Address": "https://localhost:7234" }
+        }
+      },
+      "orderCluster": {
+        "Destinations": {
+          "orderApi": { "Address": "https://localhost:7082" }
+        }
+      },
+      "paymentCluster": {
+        "Destinations": {
+          "paymentApi": { "Address": "https://localhost:7123" }
+        }
+      },
+      "notificationCluster": {
+        "Destinations": {
+          "notificationApi": { "Address": "https://localhost:7254" }
+        }
+      }
+    }
+  }
+}

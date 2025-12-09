@@ -8,80 +8,92 @@ using Microsoft.Extensions.Options;
 
 namespace ECommerce.Common.ServiceDiscovery.Extensions
 {
-    // Extension methods to wire up Consul in any ASP.NET Core service (API Gateway or microservice).
-    // This does 3 things:
-    //  1. Binds Consul settings from appsettings.json into a strongly-typed ConsulConfig.
-    //  2. Registers a singleton IConsulClient pointing to the Consul agent.
-    //  3. Registers a hosted service that automatically registers/deregisters the service in Consul.
+    // Extension methods to wire-up/plug Consul into any ASP.NET Core service
+    // (API Gateway or individual microservice).
+    // What this extension does:
+    // 1. Reads Consul settings from configuration into ConsulConfig (Options pattern).
+    // 2. Creates and registers a singleton IConsulClient that talks to the Consul agent.
+    // 3. Registers a hosted service that automatically registers/deregisters
+    //     the current service instance in Consul.
+    // 4. Enables HttpClientFactory so services can make HTTP calls to other
+    //     microservices using Consul-based service discovery.
+    // 5. Registers IConsulServiceResolver to resolve healthy service URLs.
 
-    // Usage (in Program.cs):
-    //     builder.Services.AddConsulRegistration(builder.Configuration);
-
-    // Optionally you can pass a different section name:
-    //     builder.Services.AddConsulRegistration(builder.Configuration, "ConsulApiGateway");
+    // Usage in Program.cs:
+    //    builder.Services.AddConsulRegistration(builder.Configuration);
+    // Or with a custom section name:
+    //    builder.Services.AddConsulRegistration(builder.Configuration, "ConsulApiGateway");
     public static class ConsulRegistrationExtensions
     {
         // Configures Consul integration for the current service.
-        public static IServiceCollection AddConsulRegistration(this IServiceCollection services, IConfiguration configuration, string sectionName = "Consul")
+        public static IServiceCollection AddConsulRegistration(
+            this IServiceCollection services,
+            IConfiguration configuration,
+            string sectionName = "Consul")
         {
-            // 1. Bind Consul configuration section to ConsulConfig (Options pattern)
-            // This line:
-            //   - Reads configuration from appsettings.json → "Consul" (or custom sectionName).
-            //   - Binds it to the ConsulConfig class.
-            //   - Registers IOptions<ConsulConfig> in DI.
-            //
-            // Later, other components (like ConsulRegistrationHostedService) can inject:
-            //    IOptions<ConsulConfig> consulOptions
-            // to read Address, ServiceId, ServiceName, ServiceAddress, etc.
+            // 1. Bind Consul configuration section to ConsulConfig using the Options pattern.
+            // This:
+            //  - reads configuration from appsettings.json (or other providers),
+            //  - maps the "Consul" section (or custom sectionName) to ConsulConfig,
+            //  - registers IOptions<ConsulConfig> in the DI container.
+
+            // Later, any class can inject IOptions<ConsulConfig> to access:
+            //   - Address (Consul agent URL)
+            //   - ServiceId
+            //   - ServiceName
+            //   - ServiceAddress
+            //   - HealthCheckEndpoint
+            //   - Tags
             services.Configure<ConsulConfig>(configuration.GetSection(sectionName));
 
-            // 2. Register a singleton Consul HTTP client (IConsulClient)
-            // We register IConsulClient as a singleton because:
-            //  - It internally manages HTTP connections to the Consul agent.
-            //  - Creating one shared client per process is the recommended pattern.
+            // 2. Register a singleton Consul HTTP client (IConsulClient).
+            // Why singleton?
+            //  - It manages HTTP connections under the hood and is safe to reuse.
+            //  - One client per process is the recommended pattern for HTTP-based clients.
 
-            // We use the options we just bound above to configure the client:
-            //   - ConsulConfig.Address tells us where the Consul agent is running
-            //     (e.g., "http://localhost:8500").
-
-            // Any class that needs to interact with Consul (registration, service discovery, etc.)
-            // can now inject IConsulClient via DI.
+            // How is it configured?
+            //  - We resolve ConsulConfig from IOptions<ConsulConfig>.
+            //  - We set consulConfig.Address to point to the Consul agent
+            //    (e.g., "http://localhost:8500").
             services.AddSingleton<IConsulClient>(sp =>
             {
-                // Resolve ConsulConfig from the options system.
+                // Retrieve the current Consul configuration from DI.
                 var options = sp.GetRequiredService<IOptions<ConsulConfig>>().Value;
 
-                // Create the Consul client using the supplied Consul address.
-                // This is typically the local agent URL, NOT the microservice
-                // address.
-                // Example: http://localhost:8500
+                // Create and configure the Consul client.
+                // Note: This address is the Consul agent address, NOT the microservice URL.
                 return new ConsulClient(consulConfig =>
                 {
                     consulConfig.Address = new Uri(options.Address);
                 });
             });
 
-            // 3. Register the hosted service responsible for registration/deregistration
+            // 3. Register the hosted service that manages registration/deregistration in Consul.
             // ConsulRegistrationHostedService implements IHostedService and:
-            //   - On StartAsync: registers this service instance into Consul
-            //     with its ServiceName, ServiceId, Address, Port and health check.
-            //   - On StopAsync: deregisters the instance so Consul doesn't keep stale entries.
-            //
-            // By adding it here, we ensure registration happens automatically when
-            // the service starts, and cleanup happens on shutdown, without writing
-            // extra code in Program.cs.
+            //  - On StartAsync: registers this service instance in Consul with:
+            //        ServiceName, ServiceId, Address, Port, Tags, Health Check.
+            //  - On StopAsync: cleanly deregisters the instance so Consul
+            //        no longer routes traffic to a dead instance.
+
+            // Adding it here means the service automatically participates in service discovery
+            // without needing custom code in Program.cs beyond this one extension call.
             services.AddHostedService<ConsulRegistrationHostedService>();
 
-            // Consul-based service resolver for internal HTTP calls
-            // IConsulServiceResolver is an abstraction: given a service name like "UserService"
-            // it returns a concrete base Uri of a healthy instance (e.g., https://localhost:7269/).
-            // ConsulServiceResolver implements this by querying Consul's health API,
-            // filtering to passing instances, picking one, and building the Uri.
-            // Any place in your code that needs to call another microservice can now depend on
-            // IConsulServiceResolver instead of hardcoded URLs.
+            // 4. Register the shared HttpClientFactory for service-to-service HTTP calls.
+            // This integrates perfectly with Consul service discovery.
+            // HttpClientFactory:
+            //   - Manages connection pooling safely
+            //   - Prevents socket exhaustion
+            //   - Lets us create HttpClient instances on demand
+            //   - Works great with ConsulServiceResolver
+            services.AddHttpClient();
+
+            // 5. Register the Consul-based service resolver for dynamic service discovery.
+            // Any microservice can now inject IConsulServiceResolver to resolve URLs
+            // of other microservices at runtime, instead of using hardcoded URLs.
             services.AddSingleton<IConsulServiceResolver, ConsulServiceResolver>();
 
-            // Allow method chaining.
+            // Return the IServiceCollection to support method chaining in Program.cs.
             return services;
         }
     }

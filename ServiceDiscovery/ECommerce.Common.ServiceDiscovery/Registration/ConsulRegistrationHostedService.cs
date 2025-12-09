@@ -6,95 +6,123 @@ using Microsoft.Extensions.Options;
 
 namespace ECommerce.Common.ServiceDiscovery.Registration
 {
-    // Background service that automatically:
-    //  1. Registers this microservice instance in Consul at startup.
-    //  2. Deregisters it from Consul on shutdown.
-    // This ensures Consul always has an up-to-date view of which instances are alive.
-
+    // This background service is responsible for:
+    // 1. Registering the current microservice instance to Consul when the app starts.
+    // 2. Deregistering it from Consul during application shutdown.
     public class ConsulRegistrationHostedService : IHostedService
     {
-        // Consul HTTP client used to communicate with the Consul agent (register/deregister/service checks).
+        // The Consul client used to communicate with the Consul agent.
+        // Through this, we perform service registration, deregistration, and
+        // periodic health check updates.
         private readonly IConsulClient _consulClient;
 
-        // Strongly-typed Consul configuration (Address, ServiceId, ServiceName, ServiceAddress, etc.)
+        // Strongly-typed configuration bound from appsettings.json → ConsulConfig
+        // Includes values like:
+        // Consul Address
+        // Service Name (e.g., "OrderService")
+        // Service ID (unique per instance)
+        // Service Address (URL)
+        // HealthCheck endpoint and metadata tags
         private readonly IOptions<ConsulConfig> _consulOptions;
 
-        // Logger used for observability and debugging (who registered, on which host/port, etc.).
+        // Used for structured logging to track registration and deregistration
         private readonly ILogger<ConsulRegistrationHostedService> _logger;
 
-        public ConsulRegistrationHostedService(IConsulClient consulClient, IOptions<ConsulConfig> consulOptions, ILogger<ConsulRegistrationHostedService> logger)
+        // Constructor injection of required dependencies:
+        // 1. Consul client for API calls
+        // 2. Consul configuration for settings
+        // 3. Logger for tracing and observability
+        public ConsulRegistrationHostedService(
+            IConsulClient consulClient,
+            IOptions<ConsulConfig> consulOptions,
+            ILogger<ConsulRegistrationHostedService> logger)
         {
             _consulClient = consulClient;
             _consulOptions = consulOptions;
             _logger = logger;
         }
 
-        // Called by the .NET host when the application starts.
-        // This is where we register the service instance with Consul.
+        // This method executes when the .NET host starts the application.
+        // It registers the current service instance into Consul.
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            // Read Consul-related settings bound from appsettings.json (e.g. "Consul" section).
+            // Load Consul-related settings from configuration (IOptions pattern).
             var config = _consulOptions.Value;
 
-            // ServiceAddress is something like "https://localhost:7082" or "http://localhost:5021".
-            // Uri helps us easily extract Host and Port for Consul registration.
+            // ServiceAddress contains the full URL where THIS instance is listening,
+            // e.g., "https://localhost:7082" or "http://localhost:5021".
+            // We create a Uri object so that we can easily extract the Host and Port.
             var serviceUri = new Uri(config.ServiceAddress);
 
-            // Build the registration payload that will be sent to Consul.
-            // This describes:
-            //  - Logical service name ("OrderService", "UserService", etc.)
-            //  - Unique instance ID (so multiple instances of the same service can be tracked)
-            //  - Network location (host + port)
-            //  - Tags (metadata like "https", "v1")
-            //  - Health check configuration
+            // Create the registration (payload) object that will be sent to the Consul agent.
+            // This tells Consul:
+            // - the logical service name (used by other services to find us e.g "OrderService", "UserService", etc.)
+            // - the unique instance ID (so multiple instances of the same service can be tracked)
+            // - Network location where this instance is running (host + port)
+            // - extra tags/meta information
+            // - how to check if we are healthy
             var registration = new AgentServiceRegistration
             {
-                // Unique ID for THIS instance.
-                // Example: "order-service-1" (you can use GUIDs, machine name, etc.)
+                // Unique ID for THIS running instance.
+                // If you run multiple instances of the same service,
+                // each one should have a different ID, even if the Name is the same.
                 ID = config.ServiceId,
 
-                // Logical name of the service.
-                // Other services (and YARP/API Gateway) use this name for discovery.
+                // Logical name of the service(shared by all instances of this service).
+                // Other services will query Consul using this name.
                 Name = config.ServiceName,
 
-                // Host and port where THIS instance is actually listening.
-                // Consul will use these values when other services query for this service.
+                // Network address where THIS instance is reachable.
+                // Consul will return this address when another service asks
+                // for an instance of ServiceName.
                 Address = serviceUri.Host,
                 Port = serviceUri.Port,
 
-                // Optional labels for filtering / routing (e.g. "orders", "https", "v1").
+                // Optional metadata tags. These are often used for:
+                //  - environment markers ("dev", "qa", "prod")
+                //  - transport ("https")
+                //  - version ("v1", "v2")
                 Tags = config.Tags,
 
-                // Health check definition: tells Consul how to periodically verify that this instance is healthy.
+                // Health check configuration for this instance.
+                // Consul will periodically call the provided HTTP endpoint
+                // to decide if this instance is healthy or not.
                 Check = new AgentServiceCheck
                 {
-                    // Full URL Consul will call to check health.
-                    // Example result: "https://localhost:7082/health"
+                    // Full health check URL that Consul will call.
+                    // Example: "https://localhost:7082/health"
                     HTTP = $"{config.ServiceAddress.TrimEnd('/')}{config.HealthCheckEndpoint}",
 
                     // How often Consul should call the health endpoint.
+                    // Here: every 10 seconds.
                     Interval = TimeSpan.FromSeconds(10),
 
                     // How long Consul should wait for the health endpoint to respond
-                    // before considering the check as failed.
+                    // before marking the check as failed.
                     Timeout = TimeSpan.FromSeconds(5),
 
-                    // If the service stays in a "critical" (unhealthy) state for this long,
-                    // Consul will automatically deregister it.
+                    // If the health check remains in a "critical" (unhealthy) state
+                    // for this duration, Consul will automatically deregister
+                    // this service instance so it stops receiving traffic.
                     DeregisterCriticalServiceAfter = TimeSpan.FromMinutes(1)
                 }
             };
 
+            // Log registration details for visibility
             _logger.LogInformation(
                 "Registering {ServiceName} with Consul at {Address}:{Port}",
                 registration.Name, registration.Address, registration.Port);
 
-            // Safety net:
-            // If there is an old/stale registration with the same ID (e.g., process crashed previously),
-            // we remove it first to avoid duplicates or ghost instances in Consul.
+            // STEP 1: 
+            // If there is already a registration in Consul with the same ServiceId
+            // (for example, a prior crash or unclean shutdown),
+            // we explicitly remove it first to avoid stale/duplicate entries.
             await _consulClient.Agent.ServiceDeregister(registration.ID, cancellationToken);
 
-            // Now register the current instance as a fresh service in Consul.
+            // STEP 2:
+            // Now register THIS instance as a fresh service with Consul.
+            // After this call succeeds, other microservices can discover us
+            // via the Consul service registry.
             await _consulClient.Agent.ServiceRegister(registration, cancellationToken);
 
             _logger.LogInformation(
@@ -102,19 +130,23 @@ namespace ECommerce.Common.ServiceDiscovery.Registration
                 registration.Name, registration.ID);
         }
 
-        // Called by the .NET host when the application is shutting down.
-        // This is where we cleanly deregister the service instance from Consul.
+        // Automatically called by the .NET runtime/host during application shutdown.
+        // Used to cleanly remove this service instance from Consul's registry.
         public async Task StopAsync(CancellationToken cancellationToken)
         {
+            // Read the same configured ServiceId so we deregister
+            // the correct instance from Consul.
             var config = _consulOptions.Value;
 
             _logger.LogInformation(
                 "Deregistering {ServiceName} with ID {ServiceId} from Consul",
                 config.ServiceName, config.ServiceId);
 
-            // Tell Consul that this instance is going away.
-            // This prevents other services from trying to call a dead instance.
+            // Inform Consul that this instance is going offline.
+            // Once deregistered, other services will no longer receive this instance
+            // when they ask Consul for healthy instances of this service.
             await _consulClient.Agent.ServiceDeregister(config.ServiceId, cancellationToken);
         }
     }
 }
+

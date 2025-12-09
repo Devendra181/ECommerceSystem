@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\OrderService.Application\OrderService.Application.csproj" />
     <ProjectReference Include="..\ProductService.Application\ProductService.Application.csproj" />
+    <ProjectReference Include="..\ServiceDiscovery\ECommerce.Common.ServiceDiscovery\ECommerce.Common.ServiceDiscovery.csproj" />
     <ProjectReference Include="..\UserService.Application\UserService.Application.csproj" />
   </ItemGroup>
 

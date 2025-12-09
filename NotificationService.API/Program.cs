@@ -1,4 +1,5 @@
-﻿using Messaging.Common.Extensions;
+﻿using ECommerce.Common.ServiceDiscovery.Extensions;
+using Messaging.Common.Extensions;
 using Messaging.Common.Options;
 using Messaging.Common.Topology;
 using Microsoft.EntityFrameworkCore;
@@ -104,6 +105,9 @@ namespace NotificationService.API
             //    automatically to messages published by the OrchestratorService.
             builder.Services.AddNotificationConsumers();
 
+            // Register Consul for this microservice
+            builder.Services.AddConsulRegistration(builder.Configuration);
+
             var app = builder.Build();
 
             // ============================================================
@@ -138,6 +142,9 @@ namespace NotificationService.API
             app.UseCorrelationId();
 
             app.MapControllers();
+
+            // Health endpoint used by Consul to check if this instance is alive
+            app.MapGet("/health", () => Results.Ok("Healthy"));
 
             app.Run();
         }

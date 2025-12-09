@@ -1,3 +1,4 @@
+using ECommerce.Common.ServiceDiscovery.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -90,6 +91,9 @@ namespace UserService.API
             builder.Services.AddScoped<IUserRepository, UserRepository>();
             builder.Services.AddScoped<IUserService, UserService.Application.Services.UserService>();
 
+            // Register Consul for this microservice
+            builder.Services.AddConsulRegistration(builder.Configuration);
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
@@ -108,6 +112,9 @@ namespace UserService.API
             app.UseCorrelationId();
 
             app.MapControllers();
+
+            // Health endpoint used by Consul to check if this instance is alive
+            app.MapGet("/health", () => Results.Ok("Healthy"));
 
             app.Run();
         }

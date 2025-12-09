@@ -24,6 +24,7 @@
     <ProjectReference Include="..\Messaging.Common\Messaging.Common.csproj" />
     <ProjectReference Include="..\OrderService.Application\OrderService.Application.csproj" />
     <ProjectReference Include="..\OrderService.Infrastructure\OrderService.Infrastructure.csproj" />
+    <ProjectReference Include="..\ServiceDiscovery\ECommerce.Common.ServiceDiscovery\ECommerce.Common.ServiceDiscovery.csproj" />
   </ItemGroup>
 
 </Project>

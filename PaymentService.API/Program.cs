@@ -1,3 +1,4 @@
+using ECommerce.Common.ServiceDiscovery.Extensions;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -75,6 +76,9 @@ namespace PaymentService.API
                 };
             });
 
+            // Register Consul for this microservice
+            builder.Services.AddConsulRegistration(builder.Configuration);
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
@@ -93,6 +97,9 @@ namespace PaymentService.API
             app.UseCorrelationId();
 
             app.MapControllers();
+
+            // Health endpoint used by Consul to check if this instance is alive
+            app.MapGet("/health", () => Results.Ok("Healthy"));
 
             app.Run();
         }

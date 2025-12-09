@@ -1,4 +1,5 @@
-﻿using Messaging.Common.Extensions;
+﻿using ECommerce.Common.ServiceDiscovery.Extensions;
+using Messaging.Common.Extensions;
 using Messaging.Common.Options;
 using Messaging.Common.Publishing;
 using Messaging.Common.Topology;
@@ -155,6 +156,9 @@ namespace OrderService.API
             //   automatically reconnects if RabbitMQ restarts.
             builder.Services.AddOrderCancelledConsumer();
 
+            // Register Consul for this microservice
+            builder.Services.AddConsulRegistration(builder.Configuration);
+
             var app = builder.Build();
 
             // ------------------------------------------------------------
@@ -196,6 +200,9 @@ namespace OrderService.API
             app.UseCorrelationId();
 
             app.MapControllers();
+
+            // Health endpoint used by Consul to check if this instance is alive
+            app.MapGet("/health", () => Results.Ok("Healthy"));
 
             app.Run();
         }

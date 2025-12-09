@@ -2,6 +2,7 @@
 using APIGateway.Middlewares;
 using APIGateway.Models;
 using APIGateway.Services;
+using ECommerce.Common.ServiceDiscovery.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json.Serialization;
@@ -213,6 +214,9 @@ namespace APIGateway
                 options.InstanceName = builder.Configuration["RedisCacheSettings:InstanceName"];
             });
 
+            // Register Consul for this microservice
+            builder.Services.AddConsulRegistration(builder.Configuration);
+
             // Build WebApplication instance
             var app = builder.Build();
 
@@ -313,6 +317,9 @@ namespace APIGateway
             // Once Ocelot handles a request, no other middleware executes afterward.
             // Comment the following
             // await app.UseOcelot();
+
+            // Health endpoint used by Consul to check if this instance is alive
+            app.MapGet("/health", () => Results.Ok("Healthy"));
 
             // Start the Application
             app.Run();

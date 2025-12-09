@@ -1,6 +1,7 @@
 ﻿using APIGateway.Extensions;
 using APIGateway.Middlewares;
 using APIGateway.Models;
+using APIGateway.ServiceDiscovery;
 using APIGateway.Services;
 using ECommerce.Common.ServiceDiscovery.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -9,6 +10,7 @@ using Newtonsoft.Json.Serialization;
 using Ocelot.DependencyInjection;
 using Serilog;
 using System.Text;
+using Yarp.ReverseProxy.Configuration;
 
 namespace APIGateway
 {
@@ -17,6 +19,8 @@ namespace APIGateway
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            Thread.Sleep(TimeSpan.FromSeconds(10)); // Wait for dependent services to be ready (e.g., Order, User, Consul, Redis)
 
             // MVC Controllers + Newtonsoft JSON Configuration
             builder.Services
@@ -44,9 +48,22 @@ namespace APIGateway
                 reloadOnChange: true
             );
 
+
+            // Register Consul for this microservice
+            builder.Services.AddConsulRegistration(builder.Configuration);
+
+            // Register Consul-based YARP config filter
+            builder.Services.AddSingleton<IProxyConfigFilter, ConsulConfigFilter>();
+
             // Register YARP
+            //  - Routes + clusters come from reverseproxy.json
+            //  - ConsulConfigFilter fills in cluster destinations from Consul
             builder.Services.AddReverseProxy()
-                .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+                .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+                .AddConfigFilter<ConsulConfigFilter>();
+
+            // Register Yarp Configuration Refresh Service
+            builder.Services.AddHostedService<YarpConfigRefreshService>();
 
             // Reads the RateLimiting section from appsettings.json
             // Binds it to your RateLimitSettings model
@@ -213,9 +230,6 @@ namespace APIGateway
                 //    This helps prevent key collisions between different microservices or environments.
                 options.InstanceName = builder.Configuration["RedisCacheSettings:InstanceName"];
             });
-
-            // Register Consul for this microservice
-            builder.Services.AddConsulRegistration(builder.Configuration);
 
             // Build WebApplication instance
             var app = builder.Build();

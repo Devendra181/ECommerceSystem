@@ -55,28 +55,28 @@
 
     "Clusters": {
       "userCluster": {
-        "Destinations": {
-          "userApi": { "Address": "https://localhost:7269" }
+        "Metadata": {
+          "ConsulServiceName": "UserService"
         }
       },
       "productCluster": {
-        "Destinations": {
-          "productApi": { "Address": "https://localhost:7234" }
+        "Metadata": {
+          "ConsulServiceName": "ProductService"
         }
       },
       "orderCluster": {
-        "Destinations": {
-          "orderApi": { "Address": "https://localhost:7082" }
+        "Metadata": {
+          "ConsulServiceName": "OrderService"
         }
       },
       "paymentCluster": {
-        "Destinations": {
-          "paymentApi": { "Address": "https://localhost:7123" }
+        "Metadata": {
+          "ConsulServiceName": "PaymentService"
         }
       },
       "notificationCluster": {
-        "Destinations": {
-          "notificationApi": { "Address": "https://localhost:7254" }
+        "Metadata": {
+          "ConsulServiceName": "NotificationService"
         }
       }
     }

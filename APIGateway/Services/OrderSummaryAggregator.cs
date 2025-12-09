@@ -1,5 +1,6 @@
 ﻿using APIGateway.DTOs.Common;
 using APIGateway.DTOs.OrderSummary;
+using ECommerce.Common.ServiceDiscovery.Resolution;
 using OrderService.Application.DTOs.Order;
 using ProductService.Application.DTOs;
 using System.Net;
@@ -9,15 +10,23 @@ using UserService.Application.DTOs;
 
 namespace APIGateway.Services
 {
-    // Aggregates order details from multiple microservices (Order, User, Product, Payment)
-    // to produce a unified Order Summary response for the client.
+    // Aggregator service that composes a unified Order Summary response by
+    // fetching and merging data from multiple microservices:
+    //   • OrderService  → Order details
+    //   • UserService   → Customer profile
+    //   • ProductService → Product info for ordered items
+    //   • PaymentService → Payment status (stubbed for now)
+
+    // This pattern allows API Gateway to act as a single aggregation point,
+    // reducing client complexity and network round trips.
     public class OrderSummaryAggregator : IOrderSummaryAggregator
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<OrderSummaryAggregator> _logger;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IConsulServiceResolver _resolver;
 
-        // Global JSON deserialization options for all downstream calls.
+        // Common/Global JSON serialization options for all downstream microservice calls
         //  - Case-insensitive property matching
         //  - Preserve original property naming
         //  - Enum values as strings
@@ -31,23 +40,28 @@ namespace APIGateway.Services
         public OrderSummaryAggregator(
             IHttpClientFactory httpClientFactory,
             ILogger<OrderSummaryAggregator> logger,
-            IHttpContextAccessor httpContextAccessor)
+            IHttpContextAccessor httpContextAccessor,
+            IConsulServiceResolver resolver)
         {
             _httpClientFactory = httpClientFactory;
             _logger = logger;
             _httpContextAccessor = httpContextAccessor;
+            _resolver = resolver;
         }
 
-        // Entry point that aggregates order, customer, product, and payment information
-        // from their respective microservices.
+        // Entry point: Aggregates order, user, product, and payment data into a
+        // single response model.
         public async Task<OrderSummaryResponseDTO?> GetOrderSummaryAsync(Guid orderId)
         {
-            // 1. Fetch Order first — this is the root entity that ties all others.
+            // STEP 1️: Fetch the root entity — Order
             var order = await FetchOrderAsync(orderId);
-            if (order == null)
+            if (order is null)
+            {
+                _logger.LogWarning("Order {OrderId} not found or invalid.", orderId);
                 return null;
+            }
 
-            // Prepare the aggregate response container.
+            // Prepare initial response container
             var result = new OrderSummaryResponseDTO
             {
                 OrderId = order.OrderId,
@@ -65,76 +79,67 @@ namespace APIGateway.Services
                 }
             };
 
+            // Extract necessary references for dependent calls
             var userId = order.UserId;
             var items = order.Items ?? new List<OrderItemResponseDTO>();
 
-            // 2️. Call other dependent microservices concurrently
-            // to minimize response latency.
+            // STEP 2️: Fetch related entities concurrently
+            // Run all external service calls in parallel to reduce total latency.
             var customerTask = FetchCustomerAsync(userId);
             var productsTask = FetchProductsAsync(items);
             var paymentTask = FetchPaymentAsync(orderId);
 
-            // Run all API calls in parallel (non-blocking)
             await Task.WhenAll(customerTask, productsTask, paymentTask);
 
-            // 3️. Aggregate responses and track partial failures.
+            // STEP 3️: Aggregate all results into the final DTO
+            // Each fetch method handles its own exceptions and logs appropriately.
+            result.Customer = customerTask.Result;
+            result.Products = productsTask.Result;
+            result.Payment = paymentTask.Result;
 
-            // Customer
-            if (customerTask.Result != null)
-            {
-                result.Customer = customerTask.Result;
-            }
-            else
-            {
-                result.IsPartial = true;
+            // STEP 4️: Handle Partial Failures
+            if (result.Customer == null)
                 result.Warnings.Add("Customer details could not be loaded.");
-            }
-
-            // Products
-            if (productsTask.Result.Any())
-            {
-                result.Products = productsTask.Result;
-            }
-            else
-            {
-                result.IsPartial = true;
+            if (!result.Products.Any())
                 result.Warnings.Add("Product details could not be fully loaded.");
-            }
+            if (result.Payment == null)
+                result.Warnings.Add("Payment details are unavailable.");
 
-            // Payment
-            if (paymentTask.Result != null)
-            {
-                result.Payment = paymentTask.Result;
-            }
-            else
-            {
-                result.IsPartial = true;
-                result.Warnings.Add("Payment details not available.");
-            }
-
+            result.IsPartial = result.Warnings.Any();
             // Return a unified object even if some data sources failed.
             return result;
         }
 
         // ---------------------- Downstream Call Helpers ----------------------
 
-        // Fetches order details from the Order microservice.
-        private async Task<OrderResponseDTO?> FetchOrderAsync(Guid orderId)
+        // Fetch order details from the Order microservice
+        private async Task<OrderResponseDTO?> FetchOrderAsync(Guid orderId, CancellationToken cancellationToken = default)
         {
             try
             {
-                var client = _httpClientFactory.CreateClient("OrderService");
-                var httpResponse = await client.GetAsync($"/api/Order/{orderId}");
+                // Create HttpClient
+                var client = _httpClientFactory.CreateClient();
 
-                if (httpResponse.StatusCode == HttpStatusCode.NotFound)
+                // Discover OrderService endpoint base URL from Consul
+                var orderServiceUri = await _resolver.ResolveServiceUriAsync("OrderService", cancellationToken);
+
+                // Compose the full request URI, e.g., https://orderservice:5001/api/Order/{orderId}
+                var requestUri = new Uri(orderServiceUri, $"/api/Order/{orderId}");
+
+                // Issue the GET request to the OrderService.
+                var response = await client.GetAsync(requestUri, cancellationToken);
+
+                // If the order is not found, no need to treat it as an error.
+                if (response.StatusCode == HttpStatusCode.NotFound)
                     return null;
 
-                httpResponse.EnsureSuccessStatusCode();
+                // Throw if the status code is not 2xx.
+                response.EnsureSuccessStatusCode();
 
-                // Deserialize wrapped ApiResponse<OrderResponseDTO>
-                var apiResponse =
-                    await httpResponse.Content.ReadFromJsonAsync<ApiResponse<OrderResponseDTO>>(JsonOptions);
+                // Deserialize the wrapped ApiResponse<OrderResponseDTO> payload.
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<OrderResponseDTO>>(JsonOptions, cancellationToken);
 
+                // Validate the response before using it.
                 if (apiResponse?.Success != true || apiResponse.Data is null)
                 {
                     _logger.LogWarning("OrderService returned invalid response for {OrderId}", orderId);
@@ -145,58 +150,62 @@ namespace APIGateway.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to fetch Order for orderId: {OrderId}", orderId);
+                _logger.LogError(ex, "Failed to fetch order from OrderService for OrderId: {OrderId}", orderId);
                 return null;
             }
         }
 
-        // Fetches user profile information for the customer who placed the order.
-        private async Task<CustomerInfoDTO?> FetchCustomerAsync(Guid userId)
+        // Fetch customer profile information from UserService
+        private async Task<CustomerInfoDTO?> FetchCustomerAsync(Guid userId, CancellationToken cancellationToken = default)
         {
             try
             {
-                var client = _httpClientFactory.CreateClient("UserService");
+                var client = _httpClientFactory.CreateClient();
 
-                // Call User microservice to get user profile
-                var httpResponse = await client.GetAsync($"/api/User/profile/{userId}/");
+                // Discover UserService base URL from Consul.
+                var userServiceUri = await _resolver.ResolveServiceUriAsync("UserService", cancellationToken);
+                var requestUri = new Uri(userServiceUri, $"/api/User/profile/{userId}/");
 
-                if (httpResponse.StatusCode == HttpStatusCode.NotFound)
+                var response = await client.GetAsync(requestUri, cancellationToken);
+
+                if (response.StatusCode == HttpStatusCode.NotFound)
                     return null;
 
-                httpResponse.EnsureSuccessStatusCode();
+                response.EnsureSuccessStatusCode();
 
-                var apiResponse =
-                    await httpResponse.Content.ReadFromJsonAsync<ApiResponse<ProfileDTO>>(JsonOptions);
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<ProfileDTO>>(JsonOptions, cancellationToken);
 
                 if (apiResponse?.Success != true || apiResponse.Data is null)
+                {
+                    _logger.LogWarning("UserService returned empty response for {UserId}", userId);
                     return null;
+                }
 
-                var p = apiResponse.Data;
-
-                // Map user profile into a lightweight DTO for aggregation
+                // Map the response to a simplified DTO for API Gateway consumers
                 return new CustomerInfoDTO
                 {
-                    UserId = p.UserId,
-                    FullName = p.FullName,
-                    Email = p.Email,
-                    Mobile = p.PhoneNumber,
-                    ProfilePhotoUrl = p.ProfilePhotoUrl
+                    UserId = apiResponse.Data.UserId,
+                    FullName = apiResponse.Data.FullName,
+                    Email = apiResponse.Data.Email,
+                    Mobile = apiResponse.Data.PhoneNumber,
+                    ProfilePhotoUrl = apiResponse.Data.ProfilePhotoUrl
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to fetch user profile for {UserId}", userId);
+                _logger.LogError(ex, "Error fetching user profile for UserId: {UserId}", userId);
                 return null;
             }
         }
 
-        // Fetches detailed product information for all items in the order.
-        // Uses a bulk endpoint to reduce round trips.
-        private async Task<List<OrderProductInfoDTO>> FetchProductsAsync(IEnumerable<OrderItemResponseDTO> items)
+        // Fetch product details for all products in the order using bulk lookup
+        private async Task<List<OrderProductInfoDTO>> FetchProductsAsync(
+            IEnumerable<OrderItemResponseDTO> items,
+            CancellationToken cancellationToken = default)
         {
             var result = new List<OrderProductInfoDTO>();
 
-            // Extract distinct product IDs to avoid redundant requests.
+            // Extract distinct product IDs
             var productIds = items
                 .Select(i => i.ProductId)
                 .Where(id => id != Guid.Empty)
@@ -206,109 +215,87 @@ namespace APIGateway.Services
             if (!productIds.Any())
                 return result;
 
-            var client = _httpClientFactory.CreateClient("ProductService");
-
-            // Forward the same Authorization header from the incoming request
-            var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
-            if (!string.IsNullOrWhiteSpace(authHeader))
-            {
-                client.DefaultRequestHeaders.Authorization =
-                    System.Net.Http.Headers.AuthenticationHeaderValue.Parse(authHeader);
-            }
-
-            HttpResponseMessage httpResponse;
-
             try
             {
-                // POST: /api/products/GetByIds  (Bulk fetch)
-                httpResponse = await client.PostAsJsonAsync("/api/products/GetByIds", productIds);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Error calling ProductService GetProductByIds for products: {ProductIds}",
-                    string.Join(", ", productIds));
-                return result;
-            }
+                var client = _httpClientFactory.CreateClient();
 
-            if (httpResponse.StatusCode == HttpStatusCode.NotFound)
-            {
-                _logger.LogWarning("No products found for IDs: {ProductIds}", string.Join(", ", productIds));
-                return result;
-            }
+                // Discover ProductService base URI from Consul
+                var productServiceUri = await _resolver.ResolveServiceUriAsync("ProductService", cancellationToken);
+                var endpointUri = new Uri(productServiceUri, "/api/products/GetByIds");
 
-            if (!httpResponse.IsSuccessStatusCode)
-            {
-                var body = await httpResponse.Content.ReadAsStringAsync();
-                _logger.LogError("ProductService GetProductByIds returned {StatusCode}. Payload: {Body}",
-                    httpResponse.StatusCode, body);
-                return result;
-            }
-
-            ApiResponse<List<ProductDTO>>? apiResponse;
-
-            try
-            {
-                apiResponse = await httpResponse.Content
-                    .ReadFromJsonAsync<ApiResponse<List<ProductDTO>>>(JsonOptions);
-            }
-            catch (Exception ex)
-            {
-                var body = await httpResponse.Content.ReadAsStringAsync();
-                _logger.LogError(ex,
-                    "Failed to deserialize ProductService GetProductByIds response. Payload: {Body}",
-                    body);
-                return result;
-            }
-
-            if (apiResponse?.Success != true || apiResponse.Data is null || !apiResponse.Data.Any())
-            {
-                _logger.LogWarning("ProductService GetProductByIds returned empty/invalid data.");
-                return result;
-            }
-
-            // Build a lookup dictionary for fast matching between order lines and product data
-            var productLookup = apiResponse.Data
-                .GroupBy(p => p.Id)
-                .ToDictionary(g => g.Key, g => g.First());
-
-            // Map each order item with its corresponding product details
-            foreach (var item in items)
-            {
-                if (!productLookup.TryGetValue(item.ProductId, out var p))
+                // Forward Authorization header from incoming request if available
+                var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+                if (!string.IsNullOrWhiteSpace(authHeader))
                 {
-                    _logger.LogWarning("Product {ProductId} from order not returned by ProductService.", item.ProductId);
-                    continue;
+                    client.DefaultRequestHeaders.Authorization =
+                        System.Net.Http.Headers.AuthenticationHeaderValue.Parse(authHeader);
                 }
 
-                result.Add(new OrderProductInfoDTO
-                {
-                    ProductId = p.Id,
-                    Name = p.Name,
-                    SKU = p.SKU,
-                    ImageUrl = p.PrimaryImageUrl,
-                    Quantity = item.Quantity,
-                    UnitPrice = item.DiscountedPrice // Use order price as the true source of value
-                });
-            }
+                // POST request to fetch product details in bulk
+                var response = await client.PostAsJsonAsync(endpointUri, productIds, cancellationToken);
 
-            return result;
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    _logger.LogWarning("No products found for IDs: {ProductIds}", string.Join(", ", productIds));
+                    return result;
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    _logger.LogError("ProductService returned {StatusCode}. Payload: {Body}", response.StatusCode, body);
+                    return result;
+                }
+
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<List<ProductDTO>>>(JsonOptions, cancellationToken);
+
+                if (apiResponse?.Success != true || apiResponse.Data is null)
+                {
+                    _logger.LogWarning("ProductService GetByIds returned empty or invalid data.");
+                    return result;
+                }
+
+                // Build a quick lookup dictionary for mapping (fast matching between order lines and product data)
+                var lookup = apiResponse.Data.ToDictionary(p => p.Id, p => p);
+
+                foreach (var item in items)
+                {
+                    if (lookup.TryGetValue(item.ProductId, out var product))
+                    {
+                        result.Add(new OrderProductInfoDTO
+                        {
+                            ProductId = product.Id,
+                            Name = product.Name,
+                            SKU = product.SKU,
+                            ImageUrl = product.PrimaryImageUrl,
+                            Quantity = item.Quantity,
+                            UnitPrice = item.DiscountedPrice
+                        });
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Product {ProductId} not found in ProductService response.", item.ProductId);
+                    }
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to fetch products for order items: {Ids}", string.Join(", ", productIds));
+                return result;
+            }
         }
 
-        // Fetches payment details for the given order.
-        // Currently stubbed; to be replaced when PaymentService exposes a GET-by-OrderId API.
+        // Fetch payment details from PaymentService
         private async Task<PaymentInfoDTO?> FetchPaymentAsync(Guid orderId)
         {
             // NOTE:
             // Currently, there is NO endpoint in PaymentService to get payment details by OrderId.
             // This method returns hardcoded data for demo purposes.
-
-            _logger.LogInformation(
-                "Payment details for OrderId {OrderId} are currently stubbed. Integration pending.", orderId);
-
+            _logger.LogInformation("Payment details for OrderId {OrderId} are stubbed for now.", orderId);
             await Task.CompletedTask;
 
-            // Hardcoded sample payment (used until PaymentService endpoint is ready)
             return new PaymentInfoDTO
             {
                 PaymentId = Guid.Parse("11111111-1111-1111-1111-111111111111"),

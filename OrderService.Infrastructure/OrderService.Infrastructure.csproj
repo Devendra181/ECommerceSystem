@@ -10,6 +10,7 @@
     <ProjectReference Include="..\Messaging.Common\Messaging.Common.csproj" />
     <ProjectReference Include="..\OrderService.Contracts\OrderService.Contracts.csproj" />
     <ProjectReference Include="..\OrderService.Domain\OrderService.Domain.csproj" />
+    <ProjectReference Include="..\ServiceDiscovery\ECommerce.Common.ServiceDiscovery\ECommerce.Common.ServiceDiscovery.csproj" />
   </ItemGroup>
 
   <ItemGroup>

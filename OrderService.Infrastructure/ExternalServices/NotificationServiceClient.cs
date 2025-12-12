@@ -1,4 +1,5 @@
-﻿using OrderService.Contracts.DTOs;
+﻿using ECommerce.Common.ServiceDiscovery.Resolution;
+using OrderService.Contracts.DTOs;
 using OrderService.Contracts.Enums;
 using OrderService.Contracts.ExternalServices;
 using System.Net.Http.Headers;
@@ -8,11 +9,16 @@ namespace OrderService.Infrastructure.ExternalServices
 {
     public class NotificationServiceClient : INotificationServiceClient
     {
-        private readonly HttpClient _httpClient;
 
-        public NotificationServiceClient(IHttpClientFactory httpClientFactory)
+        //private readonly HttpClient _httpClient;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConsulServiceResolver consulServiceResolver;
+
+        public NotificationServiceClient(IHttpClientFactory httpClientFactory, IConsulServiceResolver consulServiceResolver)
         {
-            _httpClient = httpClientFactory.CreateClient("NotificationServiceClient");
+            //_httpClient = httpClientFactory.CreateClient("NotificationServiceClient");
+            this._httpClientFactory = httpClientFactory;
+            this.consulServiceResolver = consulServiceResolver;
         }
 
         public async Task SendOrderPlacedNotificationAsync(Guid userId, Guid orderId, string accessToken)
@@ -67,11 +73,30 @@ namespace OrderService.Infrastructure.ExternalServices
             await SendNotificationAsync(notification, accessToken);
         }
 
-        private async Task SendNotificationAsync(NotificationRequestDTO notification, string accessToken)
+        private async Task SendNotificationAsync(NotificationRequestDTO notification, string accessToken, CancellationToken cancellationToken = default)
         {
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-            var response = await _httpClient.PostAsJsonAsync("/api/notifications", notification);
+            //Old Withoud Service Descovery
+
+            //_httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            //var response = await _httpClient.PostAsJsonAsync("/api/notifications", notification);
+            //if (!response.IsSuccessStatusCode)
+            //{
+            //    // Log failure or handle as needed, but do not throw here
+            //}
+
+            //New Using Consul Service Descovery
+            var httpClient = _httpClientFactory.CreateClient();
+
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            var serviceUri = await consulServiceResolver.ResolveServiceUriAsync("NotificationService", cancellationToken);
+
+            var requestUri = new Uri(serviceUri, "/api/notifications");
+
+            var response = await httpClient.PostAsJsonAsync(requestUri, notification, cancellationToken);
+
             if (!response.IsSuccessStatusCode)
             {
                 // Log failure or handle as needed, but do not throw here

@@ -24,7 +24,7 @@ namespace APIGateway.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<OrderSummaryAggregator> _logger;
         private readonly IHttpContextAccessor _httpContextAccessor;
-        private readonly IConsulServiceResolver _resolver;
+        private readonly IServiceResolver _resolver;
 
         // Common/Global JSON serialization options for all downstream microservice calls
         //  - Case-insensitive property matching
@@ -41,7 +41,7 @@ namespace APIGateway.Services
             IHttpClientFactory httpClientFactory,
             ILogger<OrderSummaryAggregator> logger,
             IHttpContextAccessor httpContextAccessor,
-            IConsulServiceResolver resolver)
+            IServiceResolver resolver)
         {
             _httpClientFactory = httpClientFactory;
             _logger = logger;

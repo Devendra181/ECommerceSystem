@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json.Serialization;
 using Ocelot.DependencyInjection;
+using Ocelot.Middleware;
+using Ocelot.Provider.Eureka;
 using Serilog;
 using System.Text;
 using Yarp.ReverseProxy.Configuration;
@@ -16,7 +18,7 @@ namespace APIGateway
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public async static Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
 
@@ -48,22 +50,24 @@ namespace APIGateway
                 reloadOnChange: true
             );
 
+            // Register Eureka for this microservice
+            builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
 
             // Register Consul for this microservice
-            builder.Services.AddConsulRegistration(builder.Configuration);
+            //builder.Services.AddConsulRegistration(builder.Configuration);
 
             // Register Consul-based YARP config filter
-            builder.Services.AddSingleton<IProxyConfigFilter, ConsulConfigFilter>();
+            //builder.Services.AddSingleton<IProxyConfigFilter, ConsulConfigFilter>();
 
             // Register YARP
             //  - Routes + clusters come from reverseproxy.json
             //  - ConsulConfigFilter fills in cluster destinations from Consul
-            builder.Services.AddReverseProxy()
-                .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
-                .AddConfigFilter<ConsulConfigFilter>();
+            //builder.Services.AddReverseProxy()
+            //    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+            //    .AddConfigFilter<ConsulConfigFilter>();
 
             // Register Yarp Configuration Refresh Service
-            builder.Services.AddHostedService<YarpConfigRefreshService>();
+            //builder.Services.AddHostedService<YarpConfigRefreshService>();
 
             // Reads the RateLimiting section from appsettings.json
             // Binds it to your RateLimitSettings model
@@ -85,7 +89,7 @@ namespace APIGateway
             // optional:false  → ensures ocelot.json must exist; app won’t start without it.
             // reloadOnChange:true → allows automatic route updates during development
             //                       without restarting the API Gateway.
-            //builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
+            builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
 
             // ---------------------------------------------------------------
             // Register Ocelot Services
@@ -94,7 +98,8 @@ namespace APIGateway
             // route matching, downstream request handling, etc.) to the DI container.
             //
             // Passing builder.Configuration allows Ocelot to access the ocelot.json content.
-            //builder.Services.AddOcelot(builder.Configuration);
+            builder.Services.AddOcelot(builder.Configuration)
+                  .AddEureka(); //Enable Service Discovery with Eureka
 
 
             // Structured Logging Setup (Serilog)
@@ -313,7 +318,7 @@ namespace APIGateway
 
             // BRANCH 2: YARP Reverse Proxy
             // YARP must be last
-            app.MapReverseProxy();
+            //app.MapReverseProxy();
 
             // Ocelot middleware handles routing, transformation, and load-balancing
             // ---------------------------------------------------------------
@@ -330,7 +335,7 @@ namespace APIGateway
             // This MUST be the LAST middleware in the pipeline,
             // Once Ocelot handles a request, no other middleware executes afterward.
             // Comment the following
-            // await app.UseOcelot();
+            await app.UseOcelot();
 
             // Health endpoint used by Consul to check if this instance is alive
             app.MapGet("/health", () => Results.Ok("Healthy"));

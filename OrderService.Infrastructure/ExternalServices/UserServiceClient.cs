@@ -12,9 +12,9 @@ namespace OrderService.Infrastructure.ExternalServices
 
         //private readonly HttpClient _httpClient;
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IConsulServiceResolver _consulServiceResolver;
+        private readonly IServiceResolver _consulServiceResolver;
 
-        public UserServiceClient(IHttpClientFactory httpClientFactory, IConsulServiceResolver consulServiceResolver)
+        public UserServiceClient(IHttpClientFactory httpClientFactory, IServiceResolver consulServiceResolver)
         {
             //_httpClient = httpClientFactory.CreateClient("UserServiceClient");
             _httpClientFactory = httpClientFactory;

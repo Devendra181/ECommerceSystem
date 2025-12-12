@@ -5,13 +5,18 @@
     // This is the single public entry point that external clients will use.
     // All requests from frontend or external APIs should go through this URL.
     // the Gateway will route it to the corresponding downstream microservice internally.
-    "BaseUrl": "https://localhost:7047"
+    "BaseUrl": "https://localhost:7204",
+    "ServiceDiscoveryProvider": {
+      "Type": "eureka",
+      "Host": "localhost",
+      "Port": 8761,
+      "PollingInterval": 10000
+    }
   },
 
   // Routes: Each entry defines how an incoming client request (Upstream)
   // should be forwarded to the correct backend microservice (Downstream).
   "Routes": [
-
     // ==========================================================
     // USER SERVICE ROUTE
     // ==========================================================
@@ -19,7 +24,6 @@
       // The incoming URL pattern that clients use to access user-related APIs.
       // Example: GET https://localhost:7047/users/api/login → forwards to User microservice https://localhost:7269/users/User/login.
       "UpstreamPathTemplate": "/users/{everything}",
-
       // Allowed HTTP methods for this route.
       // Specifying them explicitly ensures better control and clarity.
       "UpstreamHttpMethod": [ "Get", "Post", "Put", "Delete", "Patch" ],
@@ -29,18 +33,21 @@
       // to the UserService API (e.g., /api/login, /api/register, etc.).
       "DownstreamPathTemplate": "/api/{everything}",
 
+      "UseServiceDiscovery": true,
+      "ServiceName": "UserService" // Eureka logical name
+
       // The communication scheme used between Gateway and microservice.
       // Using HTTPS ensures encrypted communication internally.
-      "DownstreamScheme": "https",
+      //"DownstreamScheme": "https",
 
       // Host and port where the actual UserService is running.
       // This is not publicly accessible — it’s the private internal URL.
-      "DownstreamHostAndPorts": [
-        {
-          "Host": "localhost",
-          "Port": 7269
-        }
-      ]
+      //"DownstreamHostAndPorts": [
+      //  {
+      //    "Host": "localhost",
+      //    "Port": 7269
+      //  }
+      //]
     },
 
     // ==========================================================
@@ -54,15 +61,20 @@
 
       // Downstream path mapping to your ProductService API.
       "DownstreamPathTemplate": "/api/{everything}",
-      "DownstreamScheme": "https",
+
+      "UseServiceDiscovery": true,
+      "ServiceName": "ProductService",
+
+
+      //"DownstreamScheme": "https",
 
       // The internal host and port for ProductService
-      "DownstreamHostAndPorts": [
-        {
-          "Host": "localhost",
-          "Port": 7234
-        }
-      ]
+      //"DownstreamHostAndPorts": [
+      //  {
+      //    "Host": "localhost",
+      //    "Port": 7234
+      //  }
+      //]
     },
 
     // ==========================================================
@@ -76,15 +88,18 @@
 
       // Downstream path mapping to your OrderService API.
       "DownstreamPathTemplate": "/api/{everything}",
-      "DownstreamScheme": "https",
+      "UseServiceDiscovery": true,
+      "ServiceName": "OrderService",
+
+      //"DownstreamScheme": "https",
 
       // The internal host and port for OrderService
-      "DownstreamHostAndPorts": [
-        {
-          "Host": "localhost",
-          "Port": 7082
-        }
-      ]
+      //"DownstreamHostAndPorts": [
+      //  {
+      //    "Host": "localhost",
+      //    "Port": 7082
+      //  }
+      //]
     },
 
     // ==========================================================
@@ -98,15 +113,18 @@
 
       // Internal mapping for PaymentService APIs.
       "DownstreamPathTemplate": "/api/{everything}",
-      "DownstreamScheme": "https",
+      "UseServiceDiscovery": true,
+      "ServiceName": "PaymentService"
+
+      //"DownstreamScheme": "https",
 
       // PaymentService host and port.
-      "DownstreamHostAndPorts": [
-        {
-          "Host": "localhost",
-          "Port": 7154
-        }
-      ]
+      //"DownstreamHostAndPorts": [
+      //  {
+      //    "Host": "localhost",
+      //    "Port": 7154
+      //  }
+      //]
     },
 
     // ==========================================================
@@ -120,15 +138,19 @@
 
       // Downstream route for NotificationService.
       "DownstreamPathTemplate": "/api/{everything}",
-      "DownstreamScheme": "https",
+      "UseServiceDiscovery": true,
+      "ServiceName": "NotificationService"
+
+      //"DownstreamScheme": "https",
 
       // Internal endpoint for NotificationService.
-      "DownstreamHostAndPorts": [
-        {
-          "Host": "localhost",
-          "Port": 7192
-        }
-      ]
+      //"DownstreamHostAndPorts": [
+      //  {
+      //    "Host": "localhost",
+      //    "Port": 7192
+      //  }
+      //]
     }
+
   ]
 }

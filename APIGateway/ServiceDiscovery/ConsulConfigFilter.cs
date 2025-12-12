@@ -26,11 +26,11 @@ namespace APIGateway.ServiceDiscovery
     //   and fills cluster destinations with healthy service instances.
     public class ConsulConfigFilter : IProxyConfigFilter
     {
-        private readonly IConsulServiceResolver _serviceResolver;
+        private readonly IServiceResolver _serviceResolver;
         private readonly ILogger<ConsulConfigFilter> _logger;
 
         public ConsulConfigFilter(
-            IConsulServiceResolver serviceResolver,
+            IServiceResolver serviceResolver,
             ILogger<ConsulConfigFilter> logger)
         {
             _serviceResolver = serviceResolver;

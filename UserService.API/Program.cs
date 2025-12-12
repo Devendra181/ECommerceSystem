@@ -92,7 +92,10 @@ namespace UserService.API
             builder.Services.AddScoped<IUserService, UserService.Application.Services.UserService>();
 
             // Register Consul for this microservice
-            builder.Services.AddConsulRegistration(builder.Configuration);
+            //builder.Services.AddConsulRegistration(builder.Configuration);
+
+            // Register Eureka for this microservice
+            builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
 
             var app = builder.Build();
 

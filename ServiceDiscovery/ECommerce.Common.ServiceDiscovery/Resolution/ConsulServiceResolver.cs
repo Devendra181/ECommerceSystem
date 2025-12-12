@@ -4,7 +4,7 @@ namespace ECommerce.Common.ServiceDiscovery.Resolution
     // Provides the logic to resolve healthy service instances from Consul's service registry.
     // This class is used by microservices (like Order, Payment, etc.)
     // and gateways to dynamically discover and communicate with other registered services.
-    public class ConsulServiceResolver : IConsulServiceResolver
+    public class ConsulServiceResolver : IServiceResolver
     {
         // Low-level Consul client used to talk to the Consul agent (HTTP API).
         // This is injected from DI and is typically a singleton for the whole app.

@@ -91,7 +91,7 @@ namespace ECommerce.Common.ServiceDiscovery.Extensions
             // 5. Register the Consul-based service resolver for dynamic service discovery.
             // Any microservice can now inject IConsulServiceResolver to resolve URLs
             // of other microservices at runtime, instead of using hardcoded URLs.
-            services.AddSingleton<IConsulServiceResolver, ConsulServiceResolver>();
+            services.AddSingleton<IServiceResolver, ConsulServiceResolver>();
 
             // Return the IServiceCollection to support method chaining in Program.cs.
             return services;

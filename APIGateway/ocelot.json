@@ -6,10 +6,22 @@
     // All requests from frontend or external APIs should go through this URL.
     // the Gateway will route it to the corresponding downstream microservice internally.
     "BaseUrl": "https://localhost:7204",
+
+    // Tell Ocelot which Service Discovery system to use.
+    // We are using Consul or eureka
     "ServiceDiscoveryProvider": {
-      "Type": "eureka",
+
+      // Use Consul or Eureka as service registry
+      "Type": "Consul", //"eureka",
+
+      // Consul or Eureka agent host (dev setup)
       "Host": "localhost",
-      "Port": 8761,
+
+      // Consul default HTTP port
+      "Port": 8500, //8761,
+
+      // How often (in ms) Ocelot polls Consul for changes
+      // Example: 10000 = every 10 seconds
       "PollingInterval": 10000
     }
   },
@@ -34,11 +46,11 @@
       "DownstreamPathTemplate": "/api/{everything}",
 
       "UseServiceDiscovery": true,
-      "ServiceName": "UserService" // Eureka logical name
+      "ServiceName": "UserService", // Eureka logical name
 
       // The communication scheme used between Gateway and microservice.
       // Using HTTPS ensures encrypted communication internally.
-      //"DownstreamScheme": "https",
+      "DownstreamScheme": "https",
 
       // Host and port where the actual UserService is running.
       // This is not publicly accessible — it’s the private internal URL.
@@ -48,6 +60,12 @@
       //    "Port": 7269
       //  }
       //]
+
+      // Load-balancing options:
+      // RoundRobin = distribute requests across instances
+      "LoadBalancerOptions": {
+        "Type": "RoundRobin"
+      }
     },
 
     // ==========================================================
@@ -65,8 +83,8 @@
       "UseServiceDiscovery": true,
       "ServiceName": "ProductService",
 
-
-      //"DownstreamScheme": "https",
+      //IIS Deployment + During Load Balancing we can use http
+      "DownstreamScheme": "http",
 
       // The internal host and port for ProductService
       //"DownstreamHostAndPorts": [
@@ -75,6 +93,12 @@
       //    "Port": 7234
       //  }
       //]
+
+      // Load-balancing options:
+      // RoundRobin = distribute requests across instances
+      "LoadBalancerOptions": {
+        "Type": "RoundRobin"
+      }
     },
 
     // ==========================================================
@@ -91,7 +115,7 @@
       "UseServiceDiscovery": true,
       "ServiceName": "OrderService",
 
-      //"DownstreamScheme": "https",
+      "DownstreamScheme": "https",
 
       // The internal host and port for OrderService
       //"DownstreamHostAndPorts": [
@@ -100,6 +124,13 @@
       //    "Port": 7082
       //  }
       //]
+
+      // Load-balancing options:
+      // RoundRobin = distribute requests across instances
+      "LoadBalancerOptions": {
+        "Type": "RoundRobin"
+      }
+
     },
 
     // ==========================================================
@@ -114,9 +145,9 @@
       // Internal mapping for PaymentService APIs.
       "DownstreamPathTemplate": "/api/{everything}",
       "UseServiceDiscovery": true,
-      "ServiceName": "PaymentService"
+      "ServiceName": "PaymentService",
 
-      //"DownstreamScheme": "https",
+      "DownstreamScheme": "https",
 
       // PaymentService host and port.
       //"DownstreamHostAndPorts": [
@@ -125,6 +156,12 @@
       //    "Port": 7154
       //  }
       //]
+
+      // Load-balancing options:
+      // RoundRobin = distribute requests across instances
+      "LoadBalancerOptions": {
+        "Type": "RoundRobin"
+      }
     },
 
     // ==========================================================
@@ -139,9 +176,9 @@
       // Downstream route for NotificationService.
       "DownstreamPathTemplate": "/api/{everything}",
       "UseServiceDiscovery": true,
-      "ServiceName": "NotificationService"
+      "ServiceName": "NotificationService",
 
-      //"DownstreamScheme": "https",
+      "DownstreamScheme": "https",
 
       // Internal endpoint for NotificationService.
       //"DownstreamHostAndPorts": [
@@ -150,6 +187,10 @@
       //    "Port": 7192
       //  }
       //]
+
+      "LoadBalancerOptions": {
+        "Type": "LeastConnection"
+      }
     }
 
   ]

@@ -10,6 +10,7 @@
     <PackageReference Include="Microsoft.AspNetCore.ResponseCompression" Version="2.3.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.0" />
     <PackageReference Include="Ocelot" Version="24.0.1" />
+    <PackageReference Include="Ocelot.Provider.Consul" Version="24.0.0" />
     <PackageReference Include="Ocelot.Provider.Eureka" Version="24.0.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.0" />

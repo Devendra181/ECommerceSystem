@@ -28,14 +28,20 @@ namespace ProductService.Api.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetAll([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
         {
+            _logger.LogInformation("Received GET ALL Products request | PageNumber={PageNumber}, PageSize={PageSize}", pageNumber, pageSize);
+
             try
             {
                 var products = await _productService.GetAllAsync(pageNumber, pageSize);
-                return Ok(ApiResponse<List<ProductDTO>>.SuccessResponse(products));
+
+                _logger.LogInformation("Successfully fetched {Count} products for PageNumber={PageNumber}, PageSize={PageSize}",products?.Count, pageNumber, pageSize);
+
+                return Ok(ApiResponse<List<ProductDTO>>.SuccessResponse(products!));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in GetAll");
+                _logger.LogError(ex,"Error occurred while fetching products | PageNumber={PageNumber}, PageSize={PageSize}", pageNumber, pageSize);
+
                 return StatusCode(500, ApiResponse<string>.FailResponse("Internal server error"));
             }
         }
@@ -47,17 +53,27 @@ namespace ProductService.Api.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetById(Guid id)
         {
+            _logger.LogInformation("Received GET Product By Id request | Id={ProductId}", id);
+
             try
             {
                 var product = await _productService.GetByIdAsync(id);
+
                 if (product == null)
+                {
+                    _logger.LogWarning("Product not found | Id={ProductId}", id);
+
                     return NotFound(ApiResponse<string>.FailResponse($"Product with id '{id}' not found"));
+                }
+
+                _logger.LogInformation("Successfully fetched product | Id={ProductId}", id);
 
                 return Ok(ApiResponse<ProductDTO>.SuccessResponse(product));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in GetById");
+                _logger.LogError(ex, "Error occurred while fetching product | Id={ProductId}", id);
+
                 return StatusCode(500, ApiResponse<string>.FailResponse("Internal server error"));
             }
         }

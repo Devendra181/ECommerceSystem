@@ -71,8 +71,12 @@ namespace ProductService.API
             builder.Services.AddScoped<IReviewService, ReviewService>();
             builder.Services.AddScoped<IInventoryService, InventoryService>();
 
-            // Add AutoMapper
+
+            // -----------------------------------------------------------------------------
+            //   AUTOMAPPER CONFIGURATION SECTION
+            // -----------------------------------------------------------------------------
             builder.Services.AddAutoMapper(typeof(MappingProfile));
+
 
             // -----------------------------------------------------------------------------
             //    RABBITMQ CONFIGURATION & SAGA PATTERN INTEGRATION SECTION
@@ -121,7 +125,12 @@ namespace ProductService.API
             //       and then publishes either StockReservedCompletedEvent or StockReservationFailedEvent.
             builder.Services.AddStockReserveConsumer();
 
-            //Adding JWT Authentication
+
+
+            // -----------------------------------------------------------------------------
+            // JWT Authentication
+            // -----------------------------------------------------------------------------
+
             builder.Services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -140,11 +149,16 @@ namespace ProductService.API
                 };
             });
 
+            // -----------------------------------------------------------------------------
+            //   SERVICE DISCOVERY CONFIGURATION SECTION
+            // -----------------------------------------------------------------------------
+
             // Register Consul for this microservice
-            //builder.Services.AddConsulRegistration(builder.Configuration);
+            builder.Services.AddConsulRegistration(builder.Configuration);
 
             // Register Eureka for this microservice
-            builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
+            //builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
+
 
             var app = builder.Build();
 
@@ -170,6 +184,8 @@ namespace ProductService.API
                 app.UseSwaggerUI();
             }
 
+            //*** Comment Below During IIS Hosting ***
+            // As we will be hosted the application on IIS with HTTP Protocol
             app.UseHttpsRedirection();
 
             app.UseAuthentication();

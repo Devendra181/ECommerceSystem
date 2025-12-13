@@ -157,10 +157,10 @@ namespace OrderService.API
             builder.Services.AddOrderCancelledConsumer();
 
             // Register Consul for this microservice
-            //builder.Services.AddConsulRegistration(builder.Configuration);
+            builder.Services.AddConsulRegistration(builder.Configuration);
 
             // Register Eureka for this microservice
-            builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
+            //builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
 
             var app = builder.Build();
 

@@ -10,11 +10,12 @@ namespace ProductService.API.Middlewares
         {
             _next = next;
         }
-
+        
+        // Invoked once per HTTP request. 
         public async Task InvokeAsync(HttpContext context)
         {
             // Try to get the existing Correlation ID from headers
-            if (!context.Request.Headers.TryGetValue(CorrelationHeader, out var correlationId))
+            if (!context.Request.Headers.TryGetValue(CorrelationHeader, out var correlationId) || string.IsNullOrWhiteSpace(correlationId))
             {
                 // If not found, create a new one
                 correlationId = Guid.NewGuid().ToString("N");
@@ -32,7 +33,8 @@ namespace ProductService.API.Middlewares
         }
     }
 
-    // Extension for easy registration
+    // Extension method for registering the CorrelationIdMiddleware
+    // in a fluent and readable way inside Program.cs (app.UseCorrelationId()).
     public static class CorrelationIdMiddlewareExtensions
     {
         public static IApplicationBuilder UseCorrelationId(this IApplicationBuilder builder)

@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json.Serialization;
 using Ocelot.DependencyInjection;
 using Ocelot.Middleware;
+using Ocelot.Provider.Consul;
 using Ocelot.Provider.Eureka;
 using Serilog;
 using System.Text;
@@ -43,6 +44,16 @@ namespace APIGateway
                     // options.SerializerSettings.Converters.Add(new Newtonsoft.Json.Converters.StringEnumConverter());
                 });
 
+
+            // Register Eureka for this microservice
+            //builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
+
+            // Register Consul for this microservice
+            builder.Services.AddConsulRegistration(builder.Configuration);
+
+            // ---------------------------------------------------------------------
+            // Register Consul-based YARP config filter
+            // ---------------------------------------------------------------------
             // Load reverseproxy.json (YARP)
             builder.Configuration.AddJsonFile(
                 "reverseproxy.json",
@@ -50,13 +61,7 @@ namespace APIGateway
                 reloadOnChange: true
             );
 
-            // Register Eureka for this microservice
-            builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
-
-            // Register Consul for this microservice
-            //builder.Services.AddConsulRegistration(builder.Configuration);
-
-            // Register Consul-based YARP config filter
+            //
             //builder.Services.AddSingleton<IProxyConfigFilter, ConsulConfigFilter>();
 
             // Register YARP
@@ -99,8 +104,8 @@ namespace APIGateway
             //
             // Passing builder.Configuration allows Ocelot to access the ocelot.json content.
             builder.Services.AddOcelot(builder.Configuration)
-                  .AddEureka(); //Enable Service Discovery with Eureka
-
+                // .AddEureka(); //Enable Service Discovery with Eureka
+                .AddConsul<ConsulServiceBuilder>(); // Enable Service Discovery with Consul, ConsulServiceBuilder that tells Ocelot to use the Consul service Address
 
             // Structured Logging Setup (Serilog)
             // ---------------------------------------------------------------------
@@ -292,6 +297,19 @@ namespace APIGateway
             // 7. Compression (must be LAST before proxy)
             app.UseMiddleware<ConditionalResponseCompressionMiddleware>();
 
+            // Short-circuit /health BEFORE Ocelot
+            app.MapWhen(
+                ctx => ctx.Request.Path.Equals("/health", StringComparison.OrdinalIgnoreCase),
+                healthApp =>
+                {
+                    healthApp.Run(async context =>
+                    {
+                        context.Response.StatusCode = StatusCodes.Status200OK;
+                        await context.Response.WriteAsync("Gateway Healthy");
+                    });
+                });
+
+
             // BRANCH 1: Custom Aggregated Endpoints (/gateway/*)
             // Any route starting with /gateway (e.g. /gateway/order-summary)
             // is handled directly by ASP.NET controllers — not Ocelot.
@@ -338,7 +356,7 @@ namespace APIGateway
             await app.UseOcelot();
 
             // Health endpoint used by Consul to check if this instance is alive
-            app.MapGet("/health", () => Results.Ok("Healthy"));
+            // app.MapGet("/health", () => Results.Ok("Healthy"));
 
             // Start the Application
             app.Run();

@@ -44,7 +44,8 @@ namespace NotificationService.Domain.Entities
 
         // Navigation Properties
         public ICollection<NotificationRecipient> Recipients { get; set; } = new List<NotificationRecipient>();
-        public ICollection<NotificationAttachment> Attachments { get; set; } = new List<NotificationAttachment>(); public ICollection<NotificationAttemptLog> AttemptLogs { get; set; } = new List<NotificationAttemptLog>();
+        public ICollection<NotificationAttachment> Attachments { get; set; } = new List<NotificationAttachment>(); 
+        public ICollection<NotificationAttemptLog> AttemptLogs { get; set; } = new List<NotificationAttemptLog>();
 
         // Audit Columns
         [Required, MaxLength(100)]

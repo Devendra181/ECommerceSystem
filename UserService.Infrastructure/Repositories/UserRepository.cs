@@ -13,9 +13,9 @@ namespace UserService.Infrastructure.Repositories
         private readonly UserDbContext _dbContext;
 
         public UserRepository(
-            UserManager<ApplicationUser> userManager,
-            SignInManager<ApplicationUser> signInManager,
-            UserDbContext dbContext)
+            UserManager<ApplicationUser> userManager, //for internal functionality how to fetch the user data how to assign the role we use UserManager for user management operations
+            //SignInManager<ApplicationUser> signInManager, //This is used for sign-in related operations if needed in future used in MVC
+            UserDbContext dbContext)  //dbContext to access other Custome entities like RefreshTokens, Addresses
         {
             _userManager = userManager;
             _dbContext = dbContext;
@@ -120,7 +120,7 @@ namespace UserService.Infrastructure.Repositories
             var appUser = await _userManager.FindByIdAsync(user.Id.ToString());
             if (appUser == null) 
                 return new List<string>();
-
+            
             return await _userManager.GetRolesAsync(appUser);
         }
 

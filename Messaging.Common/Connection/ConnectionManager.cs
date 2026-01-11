@@ -97,3 +97,53 @@ namespace Messaging.Common.Connection
     }
 }
 
+
+//---------------------------------------------
+//High level
+//---------------------------------------------
+//•	ConnectionFactory: the configuration object that knows how to open TCP connections to a RabbitMQ broker (host, port, username, password, vhost, heartbeat, SSL, etc.). You call its CreateConnection(...) to open a network connection.
+
+//•	IConnection: represents a live, open TCP connection to the RabbitMQ broker. It is the expensive, long‑lived resource you should reuse.
+
+//What each one does (plain terms)
+
+    //•	ConnectionFactory
+        //•	Holds connection settings (HostName, UserName, Password, VirtualHost, DispatchConsumersAsync, requested heartbeat, SSL options, etc.).
+        //•	Is used to create IConnection instances via CreateConnection().
+        //•	Lightweight and typically created once and reused.
+
+    //•	IConnection
+        //•	Is the actual network connection (socket/TLS) to RabbitMQ.
+        //•	Manages heartbeat and frames, and multiplexes channels.
+        //•	Exposes events like ConnectionShutdown you can subscribe to.
+        //•	Has IsOpen to check whether the connection is still valid.
+        //•	When closed or broken it must be recreated.
+
+//---------------------------------------------
+//Why this matters (best practices)
+//---------------------------------------------
+//•	Create one long‑lived IConnection per process (or per app instance). Opening connections is expensive.
+//•	Reuse the IConnection across components (publishers/consumers).
+//•	Create short‑lived IModel (channel) objects from the IConnection for each logical unit of work. Channels are lightweight compared to connections but are NOT thread‑safe — do not share a channel across threads without synchronization.
+//•	Example usage: var channel = connection.CreateModel();
+//•	Monitor connection shutdowns and recreate the connection (or use client automatic recovery features) so consumers/publishers recover gracefully.
+//•	Set DispatchConsumersAsync = true on the factory if you use async consumer handlers (as your code does).
+
+//---------------------------------------------
+//Common properties you’ll see on ConnectionFactory
+//---------------------------------------------
+
+//•	HostName, Port, UserName, Password, VirtualHost
+//•	RequestedHeartbeat
+//•	AutomaticRecoveryEnabled / TopologyRecoveryEnabled (client automatic-recovery options)
+//•	DispatchConsumersAsync (true → use async consumer handlers)
+
+//Typical lifecycle in code (concept)
+//•	Build a ConnectionFactory with settings.
+//•	Use ConnectionFactory.CreateConnection() once to get IConnection.
+//•	For publishing or consuming: call connection.CreateModel() to get IModel (channel), use it, then dispose the channel.
+//•	If connection.IsOpen is false → recreate connection with factory.CreateConnection().
+
+//Why your ConnectionManager is correct
+//•	It keeps a single ConnectionFactory configured once.
+//•	It caches a single IConnection and recreates it when null or closed — matching recommended practice to avoid expensive repeated connection opens.

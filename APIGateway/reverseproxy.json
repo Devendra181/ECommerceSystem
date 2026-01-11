@@ -55,27 +55,32 @@
 
     "Clusters": {
       "userCluster": {
+        "LoadBalancingPolicy": "RoundRobin",
         "Metadata": {
           "ConsulServiceName": "UserService"
         }
       },
       "productCluster": {
         "Metadata": {
+          "LoadBalancingPolicy": "RoundRobin",
           "ConsulServiceName": "ProductService"
         }
       },
       "orderCluster": {
         "Metadata": {
+          "LoadBalancingPolicy": "RoundRobin",
           "ConsulServiceName": "OrderService"
         }
       },
       "paymentCluster": {
         "Metadata": {
+          "LoadBalancingPolicy": "RoundRobin",
           "ConsulServiceName": "PaymentService"
         }
       },
       "notificationCluster": {
         "Metadata": {
+          "LoadBalancingPolicy": "RoundRobin",
           "ConsulServiceName": "NotificationService"
         }
       }

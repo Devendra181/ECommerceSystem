@@ -7,6 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.33.4" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.76.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.76.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.7">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -26,6 +32,12 @@
     <ProjectReference Include="..\ProductService.Domain\ProductService.Domain.csproj" />
     <ProjectReference Include="..\ProductService.Infrastructure\ProductService.Infrastructure.csproj" />
     <ProjectReference Include="..\ServiceDiscovery\ECommerce.Common.ServiceDiscovery\ECommerce.Common.ServiceDiscovery.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\GRPC\ECommerce.GrpcContracts\Protos\product.proto" GrpcServices="Server">
+      <Link>product.proto</Link>
+    </Protobuf>
   </ItemGroup>
 
 </Project>

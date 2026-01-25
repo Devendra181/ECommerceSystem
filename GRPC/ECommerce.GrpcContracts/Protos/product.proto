@@ -1,0 +1,141 @@
+﻿// PROTO3 syntax
+// We are using Protocol Buffers v3 syntax.
+syntax = "proto3";
+
+// Controls the C# namespace for the generated C# classes.
+// Example generated types:
+// - ECommerce.GrpcContracts.Products.ProductGrpc
+// - ECommerce.GrpcContracts.Products.Product, GetProductsByIdsRequest, etc.
+option csharp_namespace = "ECommerce.GrpcContracts.Products";
+
+// Protobuf "package" to logically group messages/services in protobuf world.
+// Helps avoid name collisions across multiple .proto files.
+package ecommerce.products;
+
+// gRPC service contract exposed by ProductService.
+service ProductGrpc {
+
+  // RPC: Fetch product details for multiple product IDs in one call.
+  // Used by OrderService during order creation for pricing/discounts/stock info.
+  // Input  : list of product IDs
+  // Output : list of product objects
+  rpc GetProductsByIds (GetProductsByIdsRequest) returns (GetProductsByIdsReply);
+
+  // RPC: Validate each ordered product:
+  // - does the product exist?
+  // - is requested quantity available?
+  // Used by OrderService before creating an order (fail-fast).
+  rpc CheckProductsAvailability (CheckProductsAvailabilityRequest) returns (CheckProductsAvailabilityReply);
+
+  // RPC: Increase stock for multiple products at once.
+  // Used in scenarios like:
+  // - order cancellation
+  // - return approved
+  // - compensation in saga pattern
+  rpc IncreaseStockBulk (StockBulkUpdateRequest) returns (StockBulkUpdateReply);
+
+  // RPC: Decrease stock for multiple products at once.
+  // Used in scenarios like:
+  // - order placement / confirmation
+  // - reservation confirmed
+  rpc DecreaseStockBulk (StockBulkUpdateRequest) returns (StockBulkUpdateReply);
+}
+
+// Request for GetProductsByIds.
+// A list of product IDs to fetch.
+// "repeated string" means:
+// - A list/array of strings
+// - Each string is a ProductId (Guid)
+message GetProductsByIdsRequest {
+  repeated string product_ids = 1; // A list of product IDs to fetch
+}
+
+// Response for GetProductsByIds.
+// Returns multiple Product messages.
+message GetProductsByIdsReply {
+  repeated Product products = 1; // List of products returned
+}
+
+// Product object returned by ProductService.
+// Keep it minimal: only what OrderService needs during order creation.
+message Product {
+  // Product ID (Guid as string)
+  string id = 1;
+
+  // Product name
+  string name = 2;
+
+  // Price fields are strings to avoid floating-point precision issues.
+  // In C#, your service will convert:
+  // decimal -> string using ToString(CultureInfo.InvariantCulture)
+  // and in client convert back:
+  // string -> decimal using decimal.Parse(..., CultureInfo.InvariantCulture)
+  string price = 3;
+  string discounted_price = 4;
+
+  // Current available stock quantity
+  int32 stock_quantity = 5;
+}
+
+// One stock check request item: product + requested quantity.
+message StockCheckItem {
+  // Product ID (Guid as string)
+  string product_id = 1;
+
+  // Quantity requested by OrderService
+  int32 quantity = 2;
+}
+
+// Result of validating one product for stock availability.
+message StockCheckResult {
+  // Product ID for which this result applies
+  string product_id = 1;
+
+  // true => product exists and is valid
+  // false => product does not exist / inactive / invalid product id
+  bool is_valid_product = 2;
+
+  // true => requested quantity is available
+  // false => stock is insufficient
+  bool is_quantity_available = 3;
+
+  // Stock available at time of validation
+  // (useful for UI messages or decision making)
+  int32 available_quantity = 4;
+}
+
+// Request to verify multiple products' stock
+// Stock check request → list of StockCheckItem
+// Uses bulk verification for performance.
+message CheckProductsAvailabilityRequest {
+  repeated StockCheckItem items = 1;
+}
+
+// Stock check reply → list of StockCheckResult
+message CheckProductsAvailabilityReply {
+  repeated StockCheckResult results = 1;
+}
+
+// Used for both increase and decrease operations.
+message StockUpdate {
+  // Product ID (Guid as string)
+  string product_id = 1;
+
+  // Quantity to adjust (increase or decrease depending on RPC)
+  int32 quantity = 2;
+}
+
+// Request for bulk stock updates.
+// Contains many StockUpdate items.
+// Allows multiple stock updates in a single call.
+message StockBulkUpdateRequest {
+  repeated StockUpdate updates = 1;
+}
+
+// Response after bulk stock update is applied.
+// success = true  => operation completed
+// success = false => operation failed, message describes why
+message StockBulkUpdateReply {
+  bool success = 1;
+  string message = 2;
+}

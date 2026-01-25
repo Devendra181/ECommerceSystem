@@ -1,0 +1,211 @@
+﻿// -------------------------------
+// Protocol Buffers version
+// -------------------------------
+// - proto3 is the latest and recommended syntax.
+// - Default values are used when fields are missing
+syntax = "proto3";
+
+// -------------------------------
+// C# namespace for generated code
+// -------------------------------
+// Controls the C# namespace of the generated classes.
+// Example generated types will be:
+// - ECommerce.GrpcContracts.Users.UserGrpc
+// - ECommerce.GrpcContracts.Users.UserExistsRequest, etc.
+option csharp_namespace = "ECommerce.GrpcContracts.Users";
+
+// -------------------------------
+// Protobuf package name
+// -------------------------------
+// This is NOT a C# namespace.
+// It is used internally by protobuf for namespacing
+// and to avoid conflicts across services/languages.
+package ecommerce.users;
+
+// -------------------------------
+// gRPC Service Definition
+// -------------------------------
+// A gRPC service is similar to a Controller in REST,
+// but instead of URLs, it exposes METHOD calls.
+// This defines a gRPC service named "UserGrpc".
+// Each RPC method inside maps to a callable endpoint.
+service UserGrpc {
+  // ----------------------------------
+  // RPC: Checks whether a user exists
+  // ----------------------------------
+  // Used when OrderService only needs to validate
+  // whether a UserId is valid.
+  // Input  : UserExistsRequest (contains user_id)
+  // Output : UserExistsReply   (contains exists = true/false)
+  rpc UserExists (UserExistsRequest) returns (UserExistsReply);
+
+  // ----------------------------------
+  // RPC: Fetch user profile by UserId
+  // ----------------------------------
+  // Returns basic user info required during order creation
+  // (Name, Email, Phone, etc.)
+  // Input  : GetUserByIdRequest
+  // Output : GetUserByIdReply (found flag + user object)
+  rpc GetUserById (GetUserByIdRequest) returns (GetUserByIdReply);
+
+  // -----------------------------------------
+  //  RPC: Fetch a specific address of a user
+  // -----------------------------------------
+  // Used when OrderService needs shipping/billing address by user id + address id.
+  // Input  : GetUserAddressByIdRequest
+  // Output : GetUserAddressByIdReply (found flag + address object)
+  rpc GetUserAddressById (GetUserAddressByIdRequest) returns (GetUserAddressByIdReply);
+
+  // -------------------------------
+  // RPC: Create or update an address
+  // -------------------------------
+  // If Address.Id is empty => create new
+  // If Address.Id is present => update existing
+  // Output returns the saved address_id
+  rpc SaveOrUpdateAddress (SaveOrUpdateAddressRequest) returns (SaveOrUpdateAddressReply);
+}
+
+// -------------------------------
+// Request / Response Models
+// -------------------------------
+
+// Request message for UserExists RPC.
+message UserExistsRequest {
+	// Uses string instead of Guid because:
+	// - Protobuf has no Guid type
+	// - String is language-agnostic
+
+	// field_number (1) is used in the binary format.
+	// Never change existing numbers (breaking change).
+
+	// User ID as string (Guid passed as string)
+	string user_id = 1;
+}
+
+// Response message for UserExists RPC.
+message UserExistsReply {
+  // true if user exists, false otherwise
+  bool exists = 1;
+}
+
+// Request message for GetUserById RPC.
+message GetUserByIdRequest {
+	// The user ID to search for.  
+	// user Guid as string
+	string user_id = 1;
+}
+
+// Response for GetUserById RPC.
+// "found"   → whether user exists.
+// "user"    → the user details (only if found == true)
+message GetUserByIdReply {
+	// true if user found, false if not found
+	bool found = 1;
+
+	// If found == true, this should contain user details.
+	// If found == false, this may be empty / default.
+	User user = 2;
+}
+
+// -------------------------------
+// USER MESSAGE MODEL
+// -------------------------------
+// Represents the user details returned to OrderService.
+// This is the Protobuf representation of a User.
+// Equivalent to UserDTO in your application layer.
+message User {
+  string id = 1;            // UserId (GUID as string)
+  string full_name = 2;     // Full name of the user
+  string email = 3;         // Email address
+  string phone_number = 4;  // Phone number
+}
+
+// -----------------------------
+// GET USER ADDRESS — REQUEST
+// -----------------------------
+// Request for fetching user address by user_id and address_id.
+// OrderService passes both:
+// user_id     → who owns the address
+// address_id  → which address to retrieve
+message GetUserAddressByIdRequest {
+	string user_id = 1;      // UserId (Guid as string)
+	string address_id = 2;   // AddressId (Guid as string)
+}
+
+// -----------------------------
+// GET USER ADDRESS — RESPONSE
+// -----------------------------
+// Response for GetUserAddressById.
+// found    → whether address exists
+// address  → address object (if found)
+message GetUserAddressByIdReply {
+  // true if address found for that user_id + address_id
+  bool found = 1;
+
+  // If found == true, this contains the address details.
+  Address address = 2;
+}
+
+// ----------------------------------
+// SAVE/UPDATE ADDRESS — REQUEST
+// ----------------------------------
+// Request for SaveOrUpdateAddress RPC.
+// Contains a nested Address message.
+// If address.id is empty → create new
+// If address.id is set   → update existing
+message SaveOrUpdateAddressRequest {
+   // Address object containing all fields
+  Address address = 1;
+}
+
+// ---------------------------------
+// SAVE/UPDATE ADDRESS — RESPONSE
+// ---------------------------------
+// Response for SaveOrUpdateAddress RPC.
+message SaveOrUpdateAddressReply {
+  // The saved/updated address ID (Guid as string)
+  // Useful because when creating a new address,
+  // OrderService needs the generated address_id to store in Order.
+  string address_id = 1;
+}
+
+// ---------------------------------
+// ADDRESS MESSAGE MODEL
+// ---------------------------------
+// Represents shipping/billing address
+message Address {
+  // Address ID (Guid as string)
+  // Convention used here:
+  // - empty string => create new address
+  // - non-empty    => update existing address
+  string id = 1;
+
+  // User ID to which this address belongs (Guid as string)
+  string user_id = 2;
+
+  // Address line 1 (house/building/street)
+  string address_line1 = 3;
+
+  // Address line 2 (landmark/apartment/etc.)
+  // Can be empty string if not used
+  string address_line2 = 4;
+
+  // City
+  string city = 5;
+
+  // State
+  string state = 6;
+
+  // Postal / ZIP code
+  string postal_code = 7;
+
+  // Country
+  string country = 8;
+
+  // Whether this is the default billing address for the user
+  bool is_default_billing = 9;
+
+  // Whether this is the default shipping address for the user
+  bool is_default_shipping = 10;
+}
+

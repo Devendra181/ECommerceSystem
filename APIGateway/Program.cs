@@ -308,7 +308,8 @@ namespace APIGateway
                         context.Response.StatusCode = StatusCodes.Status200OK;
                         await context.Response.WriteAsync("Gateway Healthy");
                     });
-                });
+                }
+             );
 
 
             // BRANCH 1: Custom Aggregated Endpoints (/gateway/*)

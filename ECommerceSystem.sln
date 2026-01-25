@@ -93,6 +93,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ServiceDiscovery", "Service
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ECommerce.Common.ServiceDiscovery", "ServiceDiscovery\ECommerce.Common.ServiceDiscovery\ECommerce.Common.ServiceDiscovery.csproj", "{3EEA1567-5764-4882-B841-CB2355DECA67}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "GRPC", "GRPC", "{B22376BB-038F-470C-A018-38E4D87503AD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ECommerce.GrpcContracts", "GRPC\ECommerce.GrpcContracts\ECommerce.GrpcContracts.csproj", "{3DBCE387-64C7-4163-8B37-9B7701B793A8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -243,6 +247,10 @@ Global
 		{3EEA1567-5764-4882-B841-CB2355DECA67}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3EEA1567-5764-4882-B841-CB2355DECA67}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3EEA1567-5764-4882-B841-CB2355DECA67}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3DBCE387-64C7-4163-8B37-9B7701B793A8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3DBCE387-64C7-4163-8B37-9B7701B793A8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3DBCE387-64C7-4163-8B37-9B7701B793A8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3DBCE387-64C7-4163-8B37-9B7701B793A8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -284,6 +292,7 @@ Global
 		{249B2306-3A1D-4FF4-B5A5-6CB2BBBA8EDD} = {3FCD9545-80BF-4791-9727-6C069C18140A}
 		{E5C0E854-0C40-4BE5-B498-ED038E370CD3} = {25AD1A1E-EBD6-4E3C-9354-FC38758D9456}
 		{3EEA1567-5764-4882-B841-CB2355DECA67} = {D59C602F-2E7A-4E2D-921E-CF079220A069}
+		{3DBCE387-64C7-4163-8B37-9B7701B793A8} = {B22376BB-038F-470C-A018-38E4D87503AD}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {5BAF351F-C7DC-46E8-9571-D43D9ED46B91}

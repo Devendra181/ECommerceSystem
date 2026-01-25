@@ -97,6 +97,9 @@ namespace UserService.API
             // Register Eureka for this microservice
             //builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
 
+            //GRPC Service
+            builder.Services.AddGrpc();
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
@@ -119,6 +122,8 @@ namespace UserService.API
             // Health endpoint used by Consul to check if this instance is alive
             app.MapGet("/health", () => Results.Ok("Healthy"));
 
+            app.MapGrpcService<UserService.API.GrpcServices.UserGrpcService>();
+            
             app.Run();
         }
     }

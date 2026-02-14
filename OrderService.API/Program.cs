@@ -11,6 +11,7 @@ using OrderService.Application.Interfaces;
 using OrderService.Application.MappingProfiles;
 using OrderService.Application.Mappings;
 using OrderService.Application.Messaging;
+using OrderService.Application.Orders.Commands;
 using OrderService.Application.Services;
 using OrderService.Contracts.Messaging;
 using OrderService.Infrastructure.DependencyInjection;
@@ -161,6 +162,32 @@ namespace OrderService.API
 
             // Register Eureka for this microservice
             //builder.Services.AddEurekaServiceDiscovery(builder.Configuration);
+
+
+            // Register MediatR in the DI container.
+            // builder.Services : The dependency injection (DI) service collection
+            //                    used to register all application services.
+
+            // AddMediatR(...)  : Extension method that wires up MediatR so that:
+            //  - It can discover all our IRequest / IRequestHandler implementations.
+            //  - It can be injected as IMediator and used via _mediator.Send method.
+            builder.Services.AddMediatR(cfg =>
+            {
+                // RegisterServicesFromAssembly(...):
+                // Tells MediatR: "Scan this assembly for all MediatR handlers, requests, and behaviors."
+
+                // typeof(CreateOrderCommand).Assembly:
+                // - We take the assembly where CreateOrderCommand is defined.
+                // - This is typically our "OrderService.Application" assembly.
+                // - MediatR will scan this assembly and automatically register:
+                //     * All IRequestHandler<,> implementations (command/query handlers)
+                //     * Any MediatR pipeline behaviors in that assembly.
+
+                // Why use a known type like CreateOrderCommand?
+                // - It’s a simple way to reference the correct assembly without hardcoding the name.
+                // - If later you move commands/handlers to another assembly, you just point to a type from that assembly.
+                cfg.RegisterServicesFromAssembly(typeof(CreateOrderCommand).Assembly);
+            });
 
             var app = builder.Build();
 

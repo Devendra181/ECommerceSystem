@@ -7,6 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="HotChocolate.AspNetCore" Version="15.1.12" />
+    <PackageReference Include="HotChocolate.AspNetCore.Authorization" Version="15.1.12" />
     <PackageReference Include="Microsoft.AspNetCore.ResponseCompression" Version="2.3.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.0" />
     <PackageReference Include="Ocelot" Version="24.0.1" />

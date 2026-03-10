@@ -1,9 +1,11 @@
 ﻿using APIGateway.Extensions;
+using APIGateway.GraphQL.Schema;
 using APIGateway.Middlewares;
 using APIGateway.Models;
 using APIGateway.ServiceDiscovery;
 using APIGateway.Services;
 using ECommerce.Common.ServiceDiscovery.Extensions;
+using HotChocolate.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json.Serialization;
@@ -83,6 +85,8 @@ namespace APIGateway
             builder.Services.Configure<CompressionSettings>(
                 builder.Configuration.GetSection("CompressionSettings"));
 
+
+
             // Ocelot Configuration (API Gateway Routing Layer)
             // Comment the following
             // ---------------------------------------------------------------
@@ -107,6 +111,8 @@ namespace APIGateway
             //    .AddOcelot(builder.Configuration)
             //    // .AddEureka(); //Enable Service Discovery with Eureka
             //    .AddConsul<ConsulServiceBuilder>(); // Enable Service Discovery with Consul, ConsulServiceBuilder that tells Ocelot to use the Consul service Address & per request it resolves the service instances.
+
+
 
             // Structured Logging Setup (Serilog)
             // ---------------------------------------------------------------------
@@ -151,6 +157,8 @@ namespace APIGateway
 
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
+
+
 
             // ---------------------------------------------------------------------
             // JWT Authentication (edge validation when token is present)  (Bearer Token Validation)
@@ -215,13 +223,19 @@ namespace APIGateway
                 c.BaseAddress = new Uri(urls["PaymentService"]!);
             });
 
-            // Register IHttpContextAccessor
+            // Register IHttpContextAccessor if you want to:
+            // - Forward Authorization header to microservices
+            // - Read user claims in gateway services/resolvers
+            // - Access the Bearer token
             builder.Services.AddHttpContextAccessor();
 
-            // Custom Aggregation Service Registration
-            // The aggregator composes multiple downstream responses (Order, User,
-            // Product, Payment) into a single unified payload.
+            // Custom Aggregation & Gateway Services (BFF logic) Registration
+            // These are the gateway-side orchestration services.
+            // The aggregator composes multiple downstream responses (Order, User, Product, Payment) into a single unified payload.
             builder.Services.AddScoped<IOrderSummaryAggregator, OrderSummaryAggregator>();
+            builder.Services.AddScoped<IOrderApiClient, OrderApiClient>();
+
+
 
             //----------------------------Register Redis -------------------------------
             // Register Redis as the distributed caching provider for the API Gateway.
@@ -241,6 +255,13 @@ namespace APIGateway
                 //    This helps prevent key collisions between different microservices or environments.
                 options.InstanceName = builder.Configuration["RedisCacheSettings:InstanceName"];
             });
+
+
+            // GraphQL (Hot Chocolate) Registration
+            // Adds schema: Queries, Mutations, Input/Output types, enums, auth.
+            // Hosted under /graphql endpoint.
+            builder.Services.AddGatewayGraphQL();
+
 
             // Build WebApplication instance
             var app = builder.Build();
@@ -310,35 +331,108 @@ namespace APIGateway
                     });
                 }
              );
+            //or
+            //Health Check Endpoint
+            //Lighthweith ping endpoint for uptime monitoring/ load balancers.
+            //app.MapGet("/health", async context =>
+            //{
+            //    context.Response.StatusCode = StatusCodes.Status200OK;
+            //    await context.Response.WriteAsync("Gateway Healthy");
+            //});
 
 
+            /******  REMOVING AND USING GraphQL ******/
             // BRANCH 1: Custom Aggregated Endpoints (/gateway/*)
             // Any route starting with /gateway (e.g. /gateway/order-summary)
             // is handled directly by ASP.NET controllers — not Ocelot.
-            app.MapWhen(
-                ctx => ctx.Request.Path.StartsWithSegments("/gateway", StringComparison.OrdinalIgnoreCase),
-                gatewayApp =>
-                {
-                    // Enable endpoint routing for this sub-pipeline
-                    gatewayApp.UseRouting();
-
-                    // Apply authentication & authorization
-                    gatewayApp.UseAuthentication();
-                    gatewayApp.UseAuthorization();
-
-                    // Apply rate limiting also inside this sub-pipeline if needed
-                    gatewayApp.UseCustomRateLimiting();
-
-                    // Register controller actions under this branch
-                    gatewayApp.UseEndpoints(endpoints =>
+            /*    app.MapWhen(
+                    ctx => ctx.Request.Path.StartsWithSegments("/gateway", StringComparison.OrdinalIgnoreCase),
+                    gatewayApp =>
                     {
-                        endpoints.MapControllers();
+                        // Enable endpoint routing for this sub-pipeline
+                        gatewayApp.UseRouting();
+
+                        // Apply authentication & authorization
+                        gatewayApp.UseAuthentication();
+                        gatewayApp.UseAuthorization();
+
+                        // Apply rate limiting also inside this sub-pipeline if needed
+                        gatewayApp.UseCustomRateLimiting();
+
+                        // Register controller actions under this branch
+                        gatewayApp.UseEndpoints(endpoints =>
+                        {
+                            endpoints.MapControllers();
+                        });
                     });
+            */
+
+            // IMPORTANT:
+            // Apply Gateway middlewares ONLY to non-GraphQL requests
+            // Reason:
+            // GraphQL requests are often POST /graphql with a different payload structure.
+            // Applying gateway-specific middlewares (bearer validation, caching, compression, rate limiting)
+            // may cause unexpected behavior for GraphQL.
+            //
+            // So we exclude /graphql from those custom middlewares.
+            app.UseWhen(
+                ctx => !ctx.Request.Path.StartsWithSegments("/graphql"),
+                nonGraph =>
+                {
+                    // Custom bearer validation (extra checks beyond JWT if any)
+                    nonGraph.UseGatewayBearerValidation();
+
+                    // Custom rate limiting for REST routes
+                    nonGraph.UseCustomRateLimiting();
+
+                    // Redis response caching for REST routes
+                    nonGraph.UseRedisResponseCaching();
+
+                    // Conditional compression for REST routes (skip small payloads, etc.)
+                    nonGraph.UseMiddleware<ConditionalResponseCompressionMiddleware>();
                 });
+
+            // Map REST controllers (if any)
+            app.MapControllers();  //OrderSummaryController
+
+            // GraphQL Endpoint
+            // Exposes Hot Chocolate GraphQL server at /graphql.
+            // EnableGetRequests = false means:
+            // - Only POST requests allowed
+            // - Improves security and prevents accidental query execution via URL
+            app.MapGraphQL("/graphql")
+               .WithOptions(new GraphQLServerOptions
+               {
+                   EnableGetRequests = false
+               });
+
+            // Ocelot Pipeline (EXCLUDING GraphQL)
+            // Ocelot handles routing for REST endpoints defined in ocelot.json.
+            // We exclude /graphql so GraphQL requests are handled ONLY by Hot Chocolate.
+            //app.UseWhen(
+            //    context => !context.Request.Path.StartsWithSegments("/graphql"),
+            //    async appBuilder =>
+            //    {
+            //        await appBuilder.UseOcelot();
+            //    });
+
+            app.UseWhen(
+                context => !context.Request.Path.StartsWithSegments("/graphql"),
+                appBuilder =>
+                {
+                    appBuilder.UseRouting();
+
+                    appBuilder.UseEndpoints(endpoints =>
+                    {
+                       endpoints.MapReverseProxy();
+                    });
+                }
+            );
+
 
             // BRANCH 2: YARP Reverse Proxy
             // YARP must be last
-            app.MapReverseProxy();
+            //app.MapReverseProxy();
 
             // Ocelot middleware handles routing, transformation, and load-balancing
             // ---------------------------------------------------------------
